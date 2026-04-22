@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from .i18n import t
 from .lang import POPULAR_LANGUAGES, language_display, normalize_lang_code
 from .lang_picker import LangPicker
+from .tray import app_icon
 
 
 class EditorWindow(QWidget):
@@ -42,6 +43,7 @@ class EditorWindow(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(t("editor.title"))
+        self.setWindowIcon(app_icon())
         self.resize(default_width, default_height)
         self.setMinimumSize(540, 320)
 

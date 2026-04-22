@@ -23,6 +23,7 @@ from .config import debug_enabled
 from .i18n import t
 from .lang import POPULAR_LANGUAGES, language_display
 from .lang_picker import LangPicker
+from .tray import app_icon
 
 
 def _dbg(*a) -> None:
@@ -44,6 +45,7 @@ class PopupWindow(QWidget):
                  cursor_offset_x: int = 16, cursor_offset_y: int = 16,
                  preferred_dst: str = "en") -> None:
         super().__init__(None)
+        self.setWindowIcon(app_icon())
         self._default_width = default_width
         self._default_height = default_height
         self._cursor_off = (cursor_offset_x, cursor_offset_y)

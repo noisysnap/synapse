@@ -46,7 +46,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.title": "Настройки Synapse",
         "settings.tab_provider": "Провайдер",
         "settings.tab_instruction": "Инструкция",
-        "settings.tab_languages": "Языки",
+        "settings.tab_system": "Система",
         "settings.provider_label": "Провайдер:",
         "settings.active_now": "Сейчас используется: <b>{name}</b>",
         "settings.will_switch": "Сейчас используется: <b>{current}</b>. После «OK» переключится на <b>{next}</b>.",
@@ -85,6 +85,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.ui_lang_hint": (
             "Язык самого приложения: меню трея, окно настроек, подсказки. "
             "После изменения достаточно переоткрыть окно настроек."
+        ),
+        "settings.autostart_title": "Запуск:",
+        "settings.autostart_checkbox": "Запускать при старте Windows",
+        "settings.autostart_hint": (
+            "Добавляет Synapse в автозагрузку текущего пользователя "
+            "(HKCU\\…\\Run). Права администратора не требуются."
         ),
         # Ошибки провайдеров
         "err.openai_pkg_missing": "Пакет openai не установлен: {e}",
@@ -155,7 +161,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.title": "Synapse Settings",
         "settings.tab_provider": "Provider",
         "settings.tab_instruction": "Instruction",
-        "settings.tab_languages": "Languages",
+        "settings.tab_system": "System",
         "settings.provider_label": "Provider:",
         "settings.active_now": "Currently used: <b>{name}</b>",
         "settings.will_switch": "Currently used: <b>{current}</b>. After “OK” will switch to <b>{next}</b>.",
@@ -194,6 +200,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.ui_lang_hint": (
             "Language of the app itself: tray menu, settings window, tooltips. "
             "After changing it, just reopen the Settings window."
+        ),
+        "settings.autostart_title": "Startup:",
+        "settings.autostart_checkbox": "Launch on Windows startup",
+        "settings.autostart_hint": (
+            "Adds Synapse to the current user's autostart "
+            "(HKCU\\…\\Run). No administrator rights required."
         ),
         # Provider errors
         "err.openai_pkg_missing": "openai package is not installed: {e}",
@@ -264,7 +276,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.title": "Synapse の設定",
         "settings.tab_provider": "プロバイダ",
         "settings.tab_instruction": "指示",
-        "settings.tab_languages": "言語",
+        "settings.tab_system": "システム",
         "settings.provider_label": "プロバイダ:",
         "settings.active_now": "現在の使用中: <b>{name}</b>",
         "settings.will_switch": "現在の使用中: <b>{current}</b>。「OK」を押すと <b>{next}</b> に切り替わります。",
@@ -303,6 +315,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.ui_lang_hint": (
             "アプリ自体の言語: トレイメニュー、設定画面、ツールチップ。"
             "変更後は設定ウィンドウを開き直すだけで反映されます。"
+        ),
+        "settings.autostart_title": "起動:",
+        "settings.autostart_checkbox": "Windows 起動時に自動起動",
+        "settings.autostart_hint": (
+            "現在のユーザーの自動起動 (HKCU\\…\\Run) に Synapse を追加します。"
+            "管理者権限は不要です。"
         ),
         # プロバイダのエラー
         "err.openai_pkg_missing": "openai パッケージがインストールされていません: {e}",
@@ -373,7 +391,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.title": "Ajustes de Synapse",
         "settings.tab_provider": "Proveedor",
         "settings.tab_instruction": "Instrucción",
-        "settings.tab_languages": "Idiomas",
+        "settings.tab_system": "Sistema",
         "settings.provider_label": "Proveedor:",
         "settings.active_now": "En uso actualmente: <b>{name}</b>",
         "settings.will_switch": "En uso actualmente: <b>{current}</b>. Tras pulsar «OK» se cambiará a <b>{next}</b>.",
@@ -412,6 +430,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.ui_lang_hint": (
             "Idioma de la propia aplicación: menú de la bandeja, ventana de ajustes, tooltips. "
             "Tras cambiarlo, basta con volver a abrir la ventana de ajustes."
+        ),
+        "settings.autostart_title": "Inicio:",
+        "settings.autostart_checkbox": "Iniciar con Windows",
+        "settings.autostart_hint": (
+            "Añade Synapse al inicio del usuario actual "
+            "(HKCU\\…\\Run). No requiere permisos de administrador."
         ),
         # Errores de los proveedores
         "err.openai_pkg_missing": "El paquete openai no está instalado: {e}",
@@ -482,7 +506,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.title": "Configurações do Synapse",
         "settings.tab_provider": "Provedor",
         "settings.tab_instruction": "Instrução",
-        "settings.tab_languages": "Idiomas",
+        "settings.tab_system": "Sistema",
         "settings.provider_label": "Provedor:",
         "settings.active_now": "Em uso no momento: <b>{name}</b>",
         "settings.will_switch": "Em uso no momento: <b>{current}</b>. Após «OK» mudará para <b>{next}</b>.",
@@ -521,6 +545,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.ui_lang_hint": (
             "Idioma do próprio aplicativo: menu da bandeja, janela de configurações, dicas. "
             "Após alterar, basta reabrir a janela de configurações."
+        ),
+        "settings.autostart_title": "Inicialização:",
+        "settings.autostart_checkbox": "Iniciar com o Windows",
+        "settings.autostart_hint": (
+            "Adiciona o Synapse à inicialização do usuário atual "
+            "(HKCU\\…\\Run). Não requer privilégios de administrador."
         ),
         # Erros dos provedores
         "err.openai_pkg_missing": "O pacote openai não está instalado: {e}",

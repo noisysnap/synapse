@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import autostart
 from .i18n import SUPPORTED_UI_LANGS, normalize_ui_lang, t
 from .lang import POPULAR_LANGUAGES, language_display, normalize_lang_code
 from .providers.base import CUSTOM_PROMPT_MAX_LEN
@@ -42,7 +45,26 @@ PROVIDER_LABELS = {
 }
 
 
-def make_tray_icon() -> QIcon:
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+_ICON_PATH = _ASSETS_DIR / "icon.ico"
+_app_icon_cache: QIcon | None = None
+
+
+def app_icon() -> QIcon:
+    """Иконка приложения из assets/icon.ico с fallback на нарисованную."""
+    global _app_icon_cache
+    if _app_icon_cache is not None and not _app_icon_cache.isNull():
+        return _app_icon_cache
+    if _ICON_PATH.is_file():
+        icon = QIcon(str(_ICON_PATH))
+        if not icon.isNull():
+            _app_icon_cache = icon
+            return icon
+    _app_icon_cache = _draw_fallback_icon()
+    return _app_icon_cache
+
+
+def _draw_fallback_icon() -> QIcon:
     pm = QPixmap(64, 64)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
@@ -58,6 +80,10 @@ def make_tray_icon() -> QIcon:
     p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "T")
     p.end()
     return QIcon(pm)
+
+
+def make_tray_icon() -> QIcon:
+    return app_icon()
 
 
 def _mask_key(key: str) -> str:
@@ -152,6 +178,7 @@ class SettingsDialog(QDialog):
     def __init__(self, cfg: dict[str, Any], parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(t("settings.title"))
+        self.setWindowIcon(app_icon())
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -168,11 +195,11 @@ class SettingsDialog(QDialog):
             t("settings.tab_instruction"),
         )
         self._tabs.addTab(
-            self._build_languages_tab(
+            self._build_system_tab(
                 cfg.get("preferred_dst_lang", "en"),
                 cfg.get("ui_lang", "ru"),
             ),
-            t("settings.tab_languages"),
+            t("settings.tab_system"),
         )
         layout.addWidget(self._tabs)
 
@@ -237,7 +264,7 @@ class SettingsDialog(QDialog):
 
         return page
 
-    def _build_languages_tab(self, current_code: str, current_ui: str) -> QWidget:
+    def _build_system_tab(self, current_code: str, current_ui: str) -> QWidget:
         page = QWidget()
         page_layout = QVBoxLayout(page)
 
@@ -279,6 +306,21 @@ class SettingsDialog(QDialog):
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #666;")
         page_layout.addWidget(hint)
+
+        page_layout.addSpacing(12)
+
+        autostart_title = QLabel(t("settings.autostart_title"))
+        page_layout.addWidget(autostart_title)
+
+        self._autostart_checkbox = QCheckBox(t("settings.autostart_checkbox"))
+        self._autostart_checkbox.setChecked(autostart.is_enabled())
+        self._autostart_checkbox.setEnabled(autostart.is_supported())
+        page_layout.addWidget(self._autostart_checkbox)
+
+        autostart_hint = QLabel(t("settings.autostart_hint"))
+        autostart_hint.setWordWrap(True)
+        autostart_hint.setStyleSheet("color: #666;")
+        page_layout.addWidget(autostart_hint)
 
         page_layout.addStretch(1)
         return page
@@ -371,6 +413,9 @@ class SettingsDialog(QDialog):
         if isinstance(data, str):
             return normalize_ui_lang(data)
         return normalize_ui_lang(None)
+
+    def autostart_enabled(self) -> bool:
+        return self._autostart_checkbox.isChecked()
 
 
 class TrayController:
@@ -473,6 +518,11 @@ class TrayController:
             except ValueError as e:
                 QMessageBox.warning(None, "Synapse — Anthropic", str(e))
                 return False
+
+        try:
+            autostart.apply(dlg.autostart_enabled())
+        except OSError as e:
+            QMessageBox.warning(None, "Synapse", str(e))
 
         self._on_config_saved(updates)
         self._refresh_tooltip()

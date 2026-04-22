@@ -15,7 +15,7 @@ from .providers.base import TranslationError
 from .providers.openrouter import OpenRouterTranslator
 from .providers.anthropic_direct import AnthropicTranslator
 from .providers.keys import get_openrouter_key, get_anthropic_key
-from .tray import TrayController, make_tray_icon
+from .tray import TrayController, app_icon, make_tray_icon
 
 
 class TranslationSignals(QObject):
@@ -418,6 +418,7 @@ def main() -> int:
     qapp = QApplication.instance() or QApplication(sys.argv)
     qapp.setQuitOnLastWindowClosed(False)
     qapp.setApplicationName("translato")
+    qapp.setWindowIcon(app_icon())
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
         TrayController.warn_missing_tray()
