@@ -24,6 +24,9 @@ def _pythonw_executable() -> str:
 
 def _autostart_command() -> str:
     """Команда, которую Windows выполнит при входе в систему."""
+    if getattr(sys, "frozen", False):
+        # PyInstaller-сборка: sys.executable — это сам Synapse.exe.
+        return f'"{Path(sys.executable).resolve()}"'
     exe = _pythonw_executable()
     # Рабочий каталог проекта (родитель пакета synapse).
     project_dir = Path(__file__).resolve().parent.parent
@@ -77,3 +80,32 @@ def apply(enabled: bool) -> None:
         enable()
     else:
         disable()
+
+
+def _registered_command() -> str | None:
+    if winreg is None:
+        return None
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_READ) as key:
+            value, _ = winreg.QueryValueEx(key, _VALUE_NAME)
+            return value if isinstance(value, str) else None
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+
+
+def self_heal() -> None:
+    """Если автозапуск включён, но путь устарел (exe переехал) — перезаписать.
+    Вызывается при старте приложения, чтобы перенос папки чинился автоматически."""
+    current = _registered_command()
+    if not current:
+        return
+    expected = _autostart_command()
+    if current == expected:
+        return
+    try:
+        enable()
+    except OSError:
+        # Нет прав / реестр недоступен — молча, не ломаем запуск.
+        pass

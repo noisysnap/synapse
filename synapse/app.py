@@ -6,6 +6,7 @@ import pyperclip
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
+from . import autostart
 from .config import load_config, save_config
 from .editor import EditorWindow
 from .i18n import normalize_ui_lang, set_ui_lang, t
@@ -420,6 +421,10 @@ def main() -> int:
     if not QSystemTrayIcon.isSystemTrayAvailable():
         TrayController.warn_missing_tray()
         return 2
+
+    # Если пользователь перенёс папку со сборкой, записанная в реестре
+    # команда автозапуска больше не ведёт к exe — перезаписываем.
+    autostart.self_heal()
 
     app = SynapseApp(qapp)
     _ensure_api_key_on_startup(app)

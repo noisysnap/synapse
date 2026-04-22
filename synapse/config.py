@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,10 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def config_path() -> Path:
+    if getattr(sys, "frozen", False):
+        # В PyInstaller-сборке храним config.json рядом с Synapse.exe,
+        # а не внутри _MEIPASS (та папка пересоздаётся при каждом запуске).
+        return Path(sys.executable).resolve().parent / "config.json"
     return Path(__file__).resolve().parent.parent / "config.json"
 
 

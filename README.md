@@ -106,8 +106,33 @@ python -m synapse
 
 ## Автозапуск
 
-`Win+R` → `shell:startup` → помести туда ярлык на `pythonw.exe` с параметрами
-`-m synapse` и рабочим каталогом проекта.
+В «Настройках» → «Система» есть чекбокс «Запускать при входе в Windows».
+Включает запись в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`:
+в dev-режиме туда попадает `pythonw -m synapse`, в сборке — путь к
+`Synapse.exe`. Если папка со сборкой переехала, запись в реестре
+обновится автоматически при первом ручном запуске.
+
+## Сборка в .exe
+
+Сборка — PyInstaller, режим `--onedir` (папка с `Synapse.exe` и зависимостями).
+
+PowerShell:
+```powershell
+.venv\Scripts\Activate.ps1
+pip install pyinstaller
+pyinstaller Synapse.spec
+```
+
+cmd:
+```bat
+.venv\Scripts\activate.bat
+pip install pyinstaller
+pyinstaller Synapse.spec
+```
+
+Результат — `dist\Synapse\Synapse.exe`. Папку можно переносить куда угодно,
+`config.json` создастся рядом с exe при первом запуске. Ключи по-прежнему
+лежат в Windows Credential Manager — они к exe не привязаны.
 
 ## Ручной чек-лист приёмки
 
@@ -131,4 +156,4 @@ python -m synapse
 ## Вне скоупа v1
 
 Языки, кроме RU↔EN; ручное переопределение направления; история переводов;
-офлайн-режим; автосборка в `.exe`.
+офлайн-режим.
