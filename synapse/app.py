@@ -408,10 +408,7 @@ class SynapseApp(QObject):
 def _ensure_api_key_on_startup(app: "SynapseApp") -> None:
     if app._active_key_present():
         return
-    app._tray.notify(
-        "Synapse",
-        app._active_missing_key_message(),
-    )
+    app._tray.open_settings()
 
 
 def main() -> int:
