@@ -1,60 +1,47 @@
 from __future__ import annotations
 
-import keyring
+import os
+import sys
+from typing import Iterator
 
-from .base import TranslationError
-
-KEYRING_SERVICE = "translato"
-KEYRING_USER = "openrouter_api_key"
-
-LANG_NAMES = {"ru": "Russian", "en": "English"}
-
-
-def get_api_key() -> str | None:
-    try:
-        return keyring.get_password(KEYRING_SERVICE, KEYRING_USER)
-    except keyring.errors.KeyringError:
-        return None
+from .base import TranslationError, build_system_prompt
+from .keys import (
+    get_openrouter_key,
+    set_openrouter_key,
+    delete_openrouter_key,
+)
 
 
-def set_api_key(key: str) -> None:
-    key = key.strip()
-    if not key.isascii():
-        bad = [(i, hex(ord(c))) for i, c in enumerate(key) if ord(c) > 127]
-        raise ValueError(
-            f"Ключ содержит не-ASCII символы в позициях {bad}. "
-            "Скорее всего при вставке попала буква в другой кодировке. "
-            "Скопируйте ключ заново со страницы openrouter.ai/keys."
-        )
-    keyring.set_password(KEYRING_SERVICE, KEYRING_USER, key)
+def _dbg(*a) -> None:
+    if os.environ.get("TRANSLATO_DEBUG") == "1":
+        print("[translato/openrouter]", *a, file=sys.stderr, flush=True)
 
-
-def delete_api_key() -> None:
-    try:
-        keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
-    except keyring.errors.PasswordDeleteError:
-        pass
-
-
-def _build_system_prompt(src: str, dst: str) -> str:
-    src_name = LANG_NAMES.get(src, src)
-    dst_name = LANG_NAMES.get(dst, dst)
-    return (
-        f"You are a professional translator from {src_name} to {dst_name}. "
-        "Output ONLY the translation, with no comments, no quotation marks, "
-        "no prefixes, no explanations. Preserve the original formatting, line "
-        "breaks, punctuation, proper names, URLs, code, and numbers exactly. "
-        "Use natural, idiomatic phrasing in the target language."
-    )
+# Совместимость со старым импортом из setup_key.py и tray.py.
+get_api_key = get_openrouter_key
+set_api_key = set_openrouter_key
+delete_api_key = delete_openrouter_key
 
 
 class OpenRouterTranslator:
     def __init__(self, model: str, base_url: str) -> None:
         self.model = model
         self.base_url = base_url
+        self._client = None
+        self._client_key: str | None = None
 
-    def translate(self, text: str, src: str, dst: str) -> str:
-        api_key = get_api_key()
+    def _get_client(self, api_key: str):
+        try:
+            from openai import OpenAI
+        except ImportError as e:
+            raise TranslationError(f"Пакет openai не установлен: {e}")
+
+        if self._client is None or self._client_key != api_key:
+            self._client = OpenAI(api_key=api_key, base_url=self.base_url)
+            self._client_key = api_key
+        return self._client
+
+    def translate_stream(self, text: str, src: str, dst: str) -> Iterator[str]:
+        api_key = get_openrouter_key()
         if not api_key:
             raise TranslationError(
                 "API-ключ OpenRouter не задан. Откройте «Настройки» в трее.",
@@ -69,23 +56,36 @@ class OpenRouterTranslator:
             )
 
         try:
-            from openai import OpenAI
-            from openai import APIStatusError, AuthenticationError, RateLimitError, APIConnectionError
+            from openai import (
+                APIConnectionError,
+                APIStatusError,
+                AuthenticationError,
+                RateLimitError,
+            )
         except ImportError as e:
             raise TranslationError(f"Пакет openai не установлен: {e}")
 
-        client = OpenAI(api_key=api_key, base_url=self.base_url)
-        system_prompt = _build_system_prompt(src, dst)
+        client = self._get_client(api_key)
+        system_prompt = build_system_prompt(src, dst)
+        _dbg(f"→ OpenRouter | model={self.model} | key=…{api_key[-4:]} | {src}->{dst}")
 
         try:
-            resp = client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=self.model,
                 temperature=0.2,
+                stream=True,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text},
                 ],
             )
+            for chunk in stream:
+                try:
+                    delta = chunk.choices[0].delta.content
+                except (AttributeError, IndexError, TypeError):
+                    continue
+                if delta:
+                    yield delta
         except AuthenticationError as e:
             raise TranslationError(
                 "Недействительный API-ключ. Введите ключ заново в «Настройках».",
@@ -103,14 +103,7 @@ class OpenRouterTranslator:
                     kind="auth",
                 ) from e
             raise TranslationError(f"Ошибка API (код {status}).") from e
+        except TranslationError:
+            raise
         except Exception as e:
             raise TranslationError(f"Сбой перевода: {e}") from e
-
-        try:
-            content = resp.choices[0].message.content
-        except (AttributeError, IndexError, TypeError) as e:
-            raise TranslationError("Пустой ответ от модели.") from e
-
-        if not content:
-            raise TranslationError("Пустой ответ от модели.")
-        return content.strip()

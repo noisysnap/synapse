@@ -6,9 +6,13 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    "active_provider": "openrouter",
     "openrouter": {
         "model": "anthropic/claude-haiku-4.5",
         "base_url": "https://openrouter.ai/api/v1",
+    },
+    "anthropic": {
+        "model": "claude-haiku-4-5",
     },
     "trigger": {
         "double_c_window_ms": 400,
@@ -44,7 +48,7 @@ def load_config() -> dict[str, Any]:
             return _deep_merge(DEFAULT_CONFIG, user_cfg)
         except (OSError, json.JSONDecodeError):
             pass
-    return dict(DEFAULT_CONFIG)
+    return json.loads(json.dumps(DEFAULT_CONFIG))
 
 
 def save_config(cfg: dict[str, Any]) -> None:

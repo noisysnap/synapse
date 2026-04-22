@@ -119,6 +119,12 @@ class PopupWindow(QWidget):
         self._mouse_listener: pynput_mouse.Listener | None = None
         self._outside_click.connect(self._on_outside_click)
 
+        self._streaming: bool = False
+        self._fit_timer = QTimer(self)
+        self._fit_timer.setSingleShot(True)
+        self._fit_timer.setInterval(60)
+        self._fit_timer.timeout.connect(self._fit_height_to_content)
+
         # Ручной resize по краям
         self._resize_edge: str | None = None
         self._resize_start_geom = None
@@ -149,12 +155,40 @@ class PopupWindow(QWidget):
         self._reposition_and_show()
 
     def show_translation(self, translation: str) -> None:
+        self._streaming = False
+        self._fit_timer.stop()
         self._current_translation = translation
         self._translation_label.setText(translation)
         self._copy_btn.setEnabled(bool(translation))
         self._fit_height_to_content()
 
+    def begin_translation(self) -> None:
+        """Начать накопление streaming-перевода. Чистит поле, ждёт первый delta."""
+        self._streaming = True
+        self._current_translation = ""
+        self._translation_label.setText("")
+        self._copy_btn.setEnabled(False)
+
+    def append_translation(self, delta: str) -> None:
+        """Дописать очередной кусок перевода. Ресайз дебаунсится."""
+        if not delta:
+            return
+        self._streaming = True
+        self._current_translation += delta
+        self._translation_label.setText(self._current_translation)
+        self._copy_btn.setEnabled(True)
+        if not self._fit_timer.isActive():
+            self._fit_timer.start()
+
+    def finish_translation(self) -> None:
+        """Сигнал, что стрим завершён: делаем финальный ресайз сразу."""
+        self._streaming = False
+        self._fit_timer.stop()
+        self._fit_height_to_content()
+
     def show_error(self, message: str) -> None:
+        self._streaming = False
+        self._fit_timer.stop()
         self._current_translation = ""
         self._copy_btn.setEnabled(False)
         self._translation_label.setText(message)

@@ -1,7 +1,11 @@
 {
+  "active_provider": "anthropic",
   "openrouter": {
     "model": "anthropic/claude-haiku-4.5",
     "base_url": "https://openrouter.ai/api/v1"
+  },
+  "anthropic": {
+    "model": "claude-haiku-4-5"
   },
   "trigger": {
     "double_c_window_ms": 400

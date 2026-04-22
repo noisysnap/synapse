@@ -3,7 +3,10 @@
 Локальный переводчик для Windows 11 с всплывающим окном по горячей клавише.
 Выделяешь текст в любом приложении, при зажатом `Ctrl` дважды нажимаешь `C` —
 рядом с курсором появляется перевод. Направление (RU ↔ EN) определяется
-автоматически. Перевод — через Claude Haiku 4.5 по OpenRouter.
+автоматически. Перевод — через Claude Haiku 4.5, с поддержкой двух провайдеров
+на выбор: **OpenRouter** или **Anthropic напрямую** (быстрее, меньше хопов).
+Ответ стримится в попап по мере генерации — первое слово появляется почти
+сразу.
 
 ## Установка
 
@@ -17,17 +20,24 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Получение ключа OpenRouter
+## Получение ключа
 
+Поддерживаются два провайдера, переключение — вкладками в «Настройках».
+
+**OpenRouter** (универсальный шлюз):
 1. Открой https://openrouter.ai/keys
 2. Создай ключ (начинается с `sk-or-v1-…`).
-3. Сохрани ключ одним из способов:
-   - запусти `python -m translato.setup_key` и вставь ключ в приглашение;
-   - или запусти `python -m translato` и введи ключ в диалоге «Настройки»
-     (двойной клик по иконке в трее).
+3. Сохрани через `python -m translato.setup_key` или в диалоге «Настройки».
 
-Ключ хранится в Windows Credential Manager (service `translato`,
-user `openrouter_api_key`) через пакет `keyring`. На диск он не пишется.
+**Anthropic напрямую** (на 100–300 мс быстрее, т.к. без промежуточного хопа):
+1. Открой https://console.anthropic.com/settings/keys
+2. Создай ключ (начинается с `sk-ant-…`).
+3. В «Настройках» выбери вкладку «Anthropic», вставь ключ и сохрани.
+
+Ключи хранятся в Windows Credential Manager (service `translato`,
+пользователи `openrouter_api_key` и `anthropic_api_key`) через пакет `keyring`.
+На диск они не пишутся. Активный провайдер задаётся полем `active_provider`
+в `config.json` и синхронизируется с выбранной вкладкой при сохранении.
 
 ## Запуск
 
@@ -66,9 +76,13 @@ python -m translato
 
 ```json
 {
+  "active_provider": "openrouter",
   "openrouter": {
     "model": "anthropic/claude-haiku-4.5",
     "base_url": "https://openrouter.ai/api/v1"
+  },
+  "anthropic": {
+    "model": "claude-haiku-4-5"
   },
   "trigger": { "double_c_window_ms": 400 },
   "popup": {
@@ -78,6 +92,8 @@ python -m translato
   }
 }
 ```
+
+`active_provider` — `"openrouter"` или `"anthropic"`.
 
 ## Отладка
 
