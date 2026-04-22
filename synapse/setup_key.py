@@ -36,7 +36,7 @@ def main() -> int:
     except ValueError as e:
         print(f"Ошибка: {e}", file=sys.stderr)
         return 2
-    print("Ключ сохранён в Windows Credential Manager (service=translato).")
+    print("Ключ сохранён в Windows Credential Manager (service=synapse).")
     return 0
 
 

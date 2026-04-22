@@ -63,7 +63,7 @@ class TriggerBridge(QObject):
     fired = Signal()
 
 
-class TranslatoApp(QObject):
+class SynapseApp(QObject):
     def __init__(self, qapp: QApplication) -> None:
         super().__init__()
         self._qapp = qapp
@@ -405,7 +405,7 @@ class TranslatoApp(QObject):
         self._qapp.quit()
 
 
-def _ensure_api_key_on_startup(app: "TranslatoApp") -> None:
+def _ensure_api_key_on_startup(app: "SynapseApp") -> None:
     if app._active_key_present():
         return
     app._tray.notify(
@@ -417,14 +417,14 @@ def _ensure_api_key_on_startup(app: "TranslatoApp") -> None:
 def main() -> int:
     qapp = QApplication.instance() or QApplication(sys.argv)
     qapp.setQuitOnLastWindowClosed(False)
-    qapp.setApplicationName("translato")
+    qapp.setApplicationName("synapse")
     qapp.setWindowIcon(app_icon())
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
         TrayController.warn_missing_tray()
         return 2
 
-    app = TranslatoApp(qapp)
+    app = SynapseApp(qapp)
     _ensure_api_key_on_startup(app)
 
     return qapp.exec()

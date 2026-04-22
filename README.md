@@ -1,4 +1,4 @@
-# translato
+# Synapse
 
 Локальный переводчик для Windows 11 с всплывающим окном по горячей клавише.
 Выделяешь текст в любом приложении, при зажатом `Ctrl` дважды нажимаешь `C` —
@@ -13,8 +13,8 @@
 Требуется Python 3.11+.
 
 ```bat
-git clone https://github.com/<you>/translato.git
-cd translato
+git clone https://github.com/<you>/synapse.git
+cd synapse
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -27,14 +27,14 @@ pip install -r requirements.txt
 **OpenRouter** (универсальный шлюз):
 1. Открой https://openrouter.ai/keys
 2. Создай ключ (начинается с `sk-or-v1-…`).
-3. Сохрани через `python -m translato.setup_key` или в диалоге «Настройки».
+3. Сохрани через `python -m synapse.setup_key` или в диалоге «Настройки».
 
 **Anthropic напрямую** (на 100–300 мс быстрее, т.к. без промежуточного хопа):
 1. Открой https://console.anthropic.com/settings/keys
 2. Создай ключ (начинается с `sk-ant-…`).
 3. В «Настройках» выбери вкладку «Anthropic», вставь ключ и сохрани.
 
-Ключи хранятся в Windows Credential Manager (service `translato`,
+Ключи хранятся в Windows Credential Manager (service `synapse`,
 пользователи `openrouter_api_key` и `anthropic_api_key`) через пакет `keyring`.
 На диск они не пишутся. Активный провайдер задаётся полем `active_provider`
 в `config.json` и синхронизируется с выбранной вкладкой при сохранении.
@@ -42,7 +42,7 @@ pip install -r requirements.txt
 ## Запуск
 
 ```bat
-python -m translato
+python -m synapse
 ```
 
 Окон не появляется — в системном трее должна загореться иконка «T».
@@ -98,8 +98,8 @@ python -m translato
 ## Отладка
 
 ```bat
-set TRANSLATO_DEBUG=1
-python -m translato
+set SYNAPSE_DEBUG=1
+python -m synapse
 ```
 
 Логи пишутся только в stderr.
@@ -107,13 +107,13 @@ python -m translato
 ## Автозапуск
 
 `Win+R` → `shell:startup` → помести туда ярлык на `pythonw.exe` с параметрами
-`-m translato` и рабочим каталогом проекта.
+`-m synapse` и рабочим каталогом проекта.
 
 ## Ручной чек-лист приёмки
 
 Проверки, через которые нужно пройти перед релизом:
 
-- [ ] `python -m translato` → иконка в трее, окон нет.
+- [ ] `python -m synapse` → иконка в трее, окон нет.
 - [ ] Выделить русский текст в любом приложении → `Ctrl` + `C` + `C` →
       попап с английским переводом у курсора в пределах ~1 с.
 - [ ] То же с английским текстом → русский перевод.

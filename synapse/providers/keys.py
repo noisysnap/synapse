@@ -4,7 +4,7 @@ import keyring
 
 from ..i18n import t
 
-KEYRING_SERVICE = "translato"
+KEYRING_SERVICE = "synapse"
 KEY_OPENROUTER = "openrouter_api_key"
 KEY_ANTHROPIC = "anthropic_api_key"
 

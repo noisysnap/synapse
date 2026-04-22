@@ -27,7 +27,7 @@ class EditorWindow(QWidget):
     Автоперевод по debounce на вводе текста. Смена языков/swap — мгновенно.
     """
 
-    # Сигналы наружу (в TranslatoApp)
+    # Сигналы наружу (в SynapseApp)
     translate_requested = Signal(str, str, str)  # (text, src, dst)
     closed = Signal()
 
@@ -247,7 +247,7 @@ class EditorWindow(QWidget):
     def current_dst(self) -> str:
         return self._dst_combo.value()
 
-    # --- streaming callbacks (вызывает TranslatoApp) ------------------------
+    # --- streaming callbacks (вызывает SynapseApp) ------------------------
 
     def begin_translation(self) -> None:
         self._streaming = True

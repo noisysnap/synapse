@@ -28,7 +28,7 @@ from .tray import app_icon
 
 def _dbg(*a) -> None:
     if debug_enabled():
-        print("[translato/popup]", *a, file=sys.stderr, flush=True)
+        print("[synapse/popup]", *a, file=sys.stderr, flush=True)
 
 
 RESIZE_MARGIN = 6  # толщина невидимой рамки для хвата курсором

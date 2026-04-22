@@ -25,12 +25,12 @@ def _pythonw_executable() -> str:
 def _autostart_command() -> str:
     """Команда, которую Windows выполнит при входе в систему."""
     exe = _pythonw_executable()
-    # Рабочий каталог проекта (родитель пакета translato).
+    # Рабочий каталог проекта (родитель пакета synapse).
     project_dir = Path(__file__).resolve().parent.parent
     # Кавычки вокруг путей с пробелами; /d нужен для cmd-обёртки.
-    # Используем cmd /c cd /d "<dir>" && "<pythonw>" -m translato, чтобы
+    # Используем cmd /c cd /d "<dir>" && "<pythonw>" -m synapse, чтобы
     # модуль -m находился относительно правильного рабочего каталога.
-    return f'cmd /c cd /d "{project_dir}" && "{exe}" -m translato'
+    return f'cmd /c cd /d "{project_dir}" && "{exe}" -m synapse'
 
 
 def is_supported() -> bool:

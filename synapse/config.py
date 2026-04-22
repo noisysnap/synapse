@@ -67,4 +67,4 @@ def save_config(cfg: dict[str, Any]) -> None:
 
 
 def debug_enabled() -> bool:
-    return os.environ.get("TRANSLATO_DEBUG") == "1"
+    return os.environ.get("SYNAPSE_DEBUG") == "1"
