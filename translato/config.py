@@ -9,6 +9,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "active_provider": "openrouter",
     "custom_prompt": "",
     "preferred_dst_lang": "en",
+    "ui_lang": "en",
     "openrouter": {
         "model": "anthropic/claude-haiku-4.5",
         "base_url": "https://openrouter.ai/api/v1",
@@ -21,9 +22,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "popup": {
         "default_width": 480,
-        "default_height": 320,
+        "default_height": 280,
         "cursor_offset_x": 16,
         "cursor_offset_y": 16,
+    },
+    "editor": {
+        "width": 900,
+        "height": 520,
+        "debounce_ms": 500,
     },
 }
 

@@ -24,7 +24,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .i18n import SUPPORTED_UI_LANGS, normalize_ui_lang, t
 from .lang import POPULAR_LANGUAGES, language_display, normalize_lang_code
+from .providers.base import CUSTOM_PROMPT_MAX_LEN
 from .providers.keys import (
     delete_anthropic_key,
     delete_openrouter_key,
@@ -102,13 +104,13 @@ class _ProviderTab(QWidget):
         self.key_edit = QLineEdit()
         self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.key_edit.setPlaceholderText(key_placeholder)
-        form.addRow("Модель:", self.model_edit)
-        form.addRow("Новый ключ:", self.key_edit)
+        form.addRow(t("settings.model_label"), self.model_edit)
+        form.addRow(t("settings.new_key_label"), self.key_edit)
         layout.addLayout(form)
 
         row = QHBoxLayout()
         row.addStretch(1)
-        self.delete_btn = QPushButton("Удалить сохранённый ключ")
+        self.delete_btn = QPushButton(t("settings.delete_key_btn"))
         self.delete_btn.clicked.connect(self._on_delete_clicked)
         row.addWidget(self.delete_btn)
         layout.addLayout(row)
@@ -120,24 +122,21 @@ class _ProviderTab(QWidget):
     def _refresh_status(self) -> None:
         key = self._get_key()
         if key:
-            self.status_label.setText(
-                f'<span style="color:#2e7d32;">● Ключ сохранён:</span> '
-                f'<code>{_mask_key(key)}</code>'
-            )
+            self.status_label.setText(t("settings.key_saved", mask=_mask_key(key)))
             self.delete_btn.setEnabled(True)
-            self.key_edit.setPlaceholderText("(введите, чтобы заменить сохранённый ключ)")
+            self.key_edit.setPlaceholderText(t("settings.key_replace_placeholder"))
         else:
-            self.status_label.setText(
-                '<span style="color:#c62828;">● Ключ не задан</span>'
-            )
+            self.status_label.setText(t("settings.key_missing"))
             self.delete_btn.setEnabled(False)
 
     def _on_delete_clicked(self) -> None:
         reply = QMessageBox.question(
             self,
             "translato",
-            f"Удалить сохранённый ключ {PROVIDER_LABELS.get(self.provider_id, self.provider_id)} "
-            "из Windows Credential Manager?",
+            t(
+                "settings.confirm_delete_key",
+                provider=PROVIDER_LABELS.get(self.provider_id, self.provider_id),
+            ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -152,7 +151,7 @@ class SettingsDialog(QDialog):
 
     def __init__(self, cfg: dict[str, Any], parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Настройки translato")
+        self.setWindowTitle(t("settings.title"))
         self.setModal(True)
 
         layout = QVBoxLayout(self)
@@ -163,14 +162,17 @@ class SettingsDialog(QDialog):
         self._initial_active = active
 
         self._tabs = QTabWidget()
-        self._tabs.addTab(self._build_provider_tab(cfg, active), "Провайдер")
+        self._tabs.addTab(self._build_provider_tab(cfg, active), t("settings.tab_provider"))
         self._tabs.addTab(
             self._build_instruction_tab(cfg.get("custom_prompt", "")),
-            "Инструкция",
+            t("settings.tab_instruction"),
         )
         self._tabs.addTab(
-            self._build_languages_tab(cfg.get("preferred_dst_lang", "en")),
-            "Языки",
+            self._build_languages_tab(
+                cfg.get("preferred_dst_lang", "en"),
+                cfg.get("ui_lang", "ru"),
+            ),
+            t("settings.tab_languages"),
         )
         layout.addWidget(self._tabs)
 
@@ -188,7 +190,7 @@ class SettingsDialog(QDialog):
         page_layout = QVBoxLayout(page)
 
         selector_row = QHBoxLayout()
-        selector_row.addWidget(QLabel("Провайдер:"))
+        selector_row.addWidget(QLabel(t("settings.provider_label")))
         self._provider_combo = QComboBox()
         for pid in self._PROVIDER_ORDER:
             self._provider_combo.addItem(PROVIDER_LABELS[pid], pid)
@@ -203,7 +205,7 @@ class SettingsDialog(QDialog):
 
         self._openrouter_tab = _ProviderTab(
             provider_id="openrouter",
-            link_html='Ключ OpenRouter: <a href="https://openrouter.ai/keys">openrouter.ai/keys</a>',
+            link_html=t("settings.link_openrouter"),
             model_value=cfg["openrouter"]["model"],
             key_placeholder="sk-or-v1-…",
             get_key=get_openrouter_key,
@@ -211,8 +213,7 @@ class SettingsDialog(QDialog):
         )
         self._anthropic_tab = _ProviderTab(
             provider_id="anthropic",
-            link_html='Ключ Anthropic: <a href="https://console.anthropic.com/settings/keys">'
-                      'console.anthropic.com/settings/keys</a>',
+            link_html=t("settings.link_anthropic"),
             model_value=cfg["anthropic"]["model"],
             key_placeholder="sk-ant-…",
             get_key=get_anthropic_key,
@@ -229,21 +230,39 @@ class SettingsDialog(QDialog):
         page_layout.addWidget(self._stack)
         self._update_active_label()
 
-        hint = QLabel(
-            "Выбранный в списке провайдер становится активным после нажатия «OK». "
-            "Ключи для обоих провайдеров хранятся независимо, можно держать оба."
-        )
+        hint = QLabel(t("settings.provider_hint"))
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #666;")
         page_layout.addWidget(hint)
 
         return page
 
-    def _build_languages_tab(self, current_code: str) -> QWidget:
+    def _build_languages_tab(self, current_code: str, current_ui: str) -> QWidget:
         page = QWidget()
         page_layout = QVBoxLayout(page)
 
-        title = QLabel("Язык перевода по умолчанию:")
+        # Язык интерфейса — сверху, чтобы был заметнее.
+        ui_title = QLabel(t("settings.ui_lang_title"))
+        page_layout.addWidget(ui_title)
+
+        self._ui_lang_combo = QComboBox()
+        for code, name in SUPPORTED_UI_LANGS:
+            self._ui_lang_combo.addItem(name, code)
+        ui_normalized = normalize_ui_lang(current_ui)
+        ui_idx = self._ui_lang_combo.findData(ui_normalized)
+        if ui_idx < 0:
+            ui_idx = 0
+        self._ui_lang_combo.setCurrentIndex(ui_idx)
+        page_layout.addWidget(self._ui_lang_combo)
+
+        ui_hint = QLabel(t("settings.ui_lang_hint"))
+        ui_hint.setWordWrap(True)
+        ui_hint.setStyleSheet("color: #666;")
+        page_layout.addWidget(ui_hint)
+
+        page_layout.addSpacing(12)
+
+        title = QLabel(t("settings.translation_lang_title"))
         page_layout.addWidget(title)
 
         self._lang_combo = QComboBox()
@@ -256,12 +275,7 @@ class SettingsDialog(QDialog):
         self._lang_combo.setCurrentIndex(idx)
         page_layout.addWidget(self._lang_combo)
 
-        hint = QLabel(
-            "Этот язык будет использоваться как целевой при переводе. "
-            "Если исходный текст уже на этом языке, перевод пойдёт в обратную сторону "
-            "(между русским и английским). В окне перевода язык можно быстро сменить "
-            "в выпадающем списке."
-        )
+        hint = QLabel(t("settings.translation_lang_hint"))
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #666;")
         page_layout.addWidget(hint)
@@ -273,26 +287,42 @@ class SettingsDialog(QDialog):
         page = QWidget()
         page_layout = QVBoxLayout(page)
 
-        title = QLabel("Дополнительная инструкция для модели:")
+        title = QLabel(t("settings.instruction_title"))
         page_layout.addWidget(title)
 
         self._prompt_edit = QPlainTextEdit(current_value)
-        self._prompt_edit.setPlaceholderText(
-            "Добавляется поверх основного промпта, не заменяет его.\n"
-            "Например: «Используй формальный стиль» или «Термины из IT оставляй по-английски»."
-        )
+        self._prompt_edit.setPlaceholderText(t("settings.instruction_placeholder"))
         self._prompt_edit.setMinimumHeight(180)
         page_layout.addWidget(self._prompt_edit, 1)
 
-        hint = QLabel(
-            "Инструкция применяется поверх системного промпта переводчика "
-            "и не может его переопределить. Работает для обоих провайдеров."
-        )
+        self._prompt_counter = QLabel()
+        self._prompt_counter.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._prompt_counter.setStyleSheet("color: #888;")
+        page_layout.addWidget(self._prompt_counter)
+        self._prompt_edit.textChanged.connect(self._on_prompt_changed)
+        self._on_prompt_changed()
+
+        hint = QLabel(t("settings.instruction_hint"))
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #666;")
         page_layout.addWidget(hint)
 
         return page
+
+    def _on_prompt_changed(self) -> None:
+        text = self._prompt_edit.toPlainText()
+        if len(text) > CUSTOM_PROMPT_MAX_LEN:
+            # Жёсткая обрезка с сохранением позиции курсора в пределах лимита.
+            cursor = self._prompt_edit.textCursor()
+            pos = cursor.position()
+            self._prompt_edit.blockSignals(True)
+            self._prompt_edit.setPlainText(text[:CUSTOM_PROMPT_MAX_LEN])
+            self._prompt_edit.blockSignals(False)
+            cursor = self._prompt_edit.textCursor()
+            cursor.setPosition(min(pos, CUSTOM_PROMPT_MAX_LEN))
+            self._prompt_edit.setTextCursor(cursor)
+            text = self._prompt_edit.toPlainText()
+        self._prompt_counter.setText(f"{len(text)} / {CUSTOM_PROMPT_MAX_LEN}")
 
     def _on_provider_changed(self, idx: int) -> None:
         self._stack.setCurrentIndex(idx)
@@ -303,13 +333,10 @@ class SettingsDialog(QDialog):
         selected_name = PROVIDER_LABELS[selected]
         initial_name = PROVIDER_LABELS[self._initial_active]
         if selected == self._initial_active:
-            self._active_label.setText(
-                f'Сейчас используется: <b>{initial_name}</b>'
-            )
+            self._active_label.setText(t("settings.active_now", name=initial_name))
         else:
             self._active_label.setText(
-                f'Сейчас используется: <b>{initial_name}</b>. '
-                f'После «OK» переключится на <b>{selected_name}</b>.'
+                t("settings.will_switch", current=initial_name, next=selected_name)
             )
 
     def active_provider(self) -> str:
@@ -339,6 +366,12 @@ class SettingsDialog(QDialog):
             return normalize_lang_code(data, "en")
         return "en"
 
+    def ui_lang(self) -> str:
+        data = self._ui_lang_combo.currentData()
+        if isinstance(data, str):
+            return normalize_ui_lang(data)
+        return normalize_ui_lang(None)
+
 
 class TrayController:
     def __init__(
@@ -347,11 +380,13 @@ class TrayController:
         get_config: Callable[[], dict[str, Any]],
         on_config_saved: Callable[[dict[str, Any]], None],
         on_pause_toggled: Callable[[bool], None],
+        on_editor_requested: Callable[[], None],
         on_quit: Callable[[], None],
     ) -> None:
         self._get_config = get_config
         self._on_config_saved = on_config_saved
         self._on_pause_toggled = on_pause_toggled
+        self._on_editor_requested = on_editor_requested
         self._on_quit = on_quit
         self._paused = False
 
@@ -359,44 +394,56 @@ class TrayController:
         self.tray.activated.connect(self._on_activated)
 
         self._menu = QMenu()
-        self._pause_action = QAction("Пауза", self._menu)
+        self._pause_action = QAction(t("tray.pause"), self._menu)
         self._pause_action.triggered.connect(self._toggle_pause)
         self._menu.addAction(self._pause_action)
+
+        self._editor_action = QAction(t("tray.editor"), self._menu)
+        self._editor_action.triggered.connect(self._on_editor_requested)
+        self._menu.addAction(self._editor_action)
 
         self._provider_action = QAction(self._menu)
         self._provider_action.setEnabled(False)  # информационная строка
         self._menu.addAction(self._provider_action)
 
-        settings_action = QAction("Настройки…", self._menu)
-        settings_action.triggered.connect(self.open_settings)
-        self._menu.addAction(settings_action)
+        self._settings_action = QAction(t("tray.settings"), self._menu)
+        self._settings_action.triggered.connect(self.open_settings)
+        self._menu.addAction(self._settings_action)
 
         self._menu.addSeparator()
-        quit_action = QAction("Выход", self._menu)
-        quit_action.triggered.connect(self._on_quit)
-        self._menu.addAction(quit_action)
+        self._quit_action = QAction(t("tray.quit"), self._menu)
+        self._quit_action.triggered.connect(self._on_quit)
+        self._menu.addAction(self._quit_action)
 
         self.tray.setContextMenu(self._menu)
         self._refresh_provider_indicator()
         self.tray.show()
+
+    def apply_ui_language(self) -> None:
+        """Обновить надписи меню трея после смены языка интерфейса."""
+        self._pause_action.setText(t("tray.resume") if self._paused else t("tray.pause"))
+        self._editor_action.setText(t("tray.editor"))
+        self._settings_action.setText(t("tray.settings"))
+        self._quit_action.setText(t("tray.quit"))
+        self._refresh_provider_indicator()
 
     def _refresh_provider_indicator(self) -> None:
         cfg = self._get_config()
         pid = cfg.get("active_provider", "openrouter")
         name = PROVIDER_LABELS.get(pid, pid)
         has_key = bool(get_anthropic_key()) if pid == "anthropic" else bool(get_openrouter_key())
-        key_mark = "✓" if has_key else "⚠ без ключа"
-        self._provider_action.setText(f"Провайдер: {name}  [{key_mark}]")
-        paused_suffix = " — пауза" if self._paused else ""
-        self.tray.setToolTip(f"translato — {name}{paused_suffix}")
+        key_mark = t("tray.provider_ok") if has_key else t("tray.provider_no_key")
+        self._provider_action.setText(t("tray.provider_line", name=name, mark=key_mark))
+        paused_suffix = t("tray.tooltip_paused_suffix") if self._paused else ""
+        self.tray.setToolTip(t("tray.tooltip", name=name) + paused_suffix)
 
     def _on_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.open_settings()
+            self._on_editor_requested()
 
     def _toggle_pause(self) -> None:
         self._paused = not self._paused
-        self._pause_action.setText("Продолжить" if self._paused else "Пауза")
+        self._pause_action.setText(t("tray.resume") if self._paused else t("tray.pause"))
         self._on_pause_toggled(self._paused)
         self._refresh_provider_indicator()
 
@@ -412,6 +459,7 @@ class TrayController:
             "active_provider": dlg.active_provider(),
             "custom_prompt": dlg.custom_prompt(),
             "preferred_dst_lang": dlg.preferred_dst_lang(),
+            "ui_lang": dlg.ui_lang(),
         }
 
         or_model = dlg.openrouter_model()
@@ -422,7 +470,7 @@ class TrayController:
             try:
                 set_openrouter_key(or_key)
             except ValueError as e:
-                QMessageBox.warning(None, "translato — ключ OpenRouter", str(e))
+                QMessageBox.warning(None, "translato — OpenRouter", str(e))
                 return False
 
         an_model = dlg.anthropic_model()
@@ -433,7 +481,7 @@ class TrayController:
             try:
                 set_anthropic_key(an_key)
             except ValueError as e:
-                QMessageBox.warning(None, "translato — ключ Anthropic", str(e))
+                QMessageBox.warning(None, "translato — Anthropic", str(e))
                 return False
 
         self._on_config_saved(updates)
@@ -448,5 +496,5 @@ class TrayController:
         QMessageBox.critical(
             None,
             "translato",
-            "Системный трей недоступен в этой системе.",
+            t("tray.unavailable"),
         )

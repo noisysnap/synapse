@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Iterator
 
-from .base import TranslationError, build_system_prompt
+from ..i18n import t
+from .base import (
+    TranslationError,
+    build_system_prompt,
+    build_user_message,
+    stream_postprocess,
+)
 from .keys import get_anthropic_key
 
 
@@ -17,9 +23,7 @@ class AnthropicTranslator:
         try:
             from anthropic import Anthropic
         except ImportError as e:
-            raise TranslationError(
-                f"Пакет anthropic не установлен: {e}. Установите: pip install anthropic"
-            )
+            raise TranslationError(t("err.anthropic_pkg_missing", e=e))
 
         if self._client is None or self._client_key != api_key:
             self._client = Anthropic(api_key=api_key)
@@ -30,14 +34,12 @@ class AnthropicTranslator:
         api_key = get_anthropic_key()
         if not api_key:
             raise TranslationError(
-                "API-ключ Anthropic не задан. Откройте «Настройки» в трее.",
+                t("err.key_missing_anthropic"),
                 kind="auth",
             )
         if not api_key.isascii():
             raise TranslationError(
-                "В сохранённом ключе есть не-ASCII символы. "
-                "Скопируйте ключ заново с console.anthropic.com "
-                "и вставьте его через «Настройки».",
+                t("err.key_non_ascii_anthropic"),
                 kind="auth",
             )
 
@@ -49,40 +51,44 @@ class AnthropicTranslator:
                 RateLimitError,
             )
         except ImportError as e:
-            raise TranslationError(f"Пакет anthropic не установлен: {e}")
+            raise TranslationError(t("err.anthropic_pkg_missing_short", e=e))
 
         client = self._get_client(api_key)
         system_prompt = build_system_prompt(src, dst, extra=self.custom_prompt)
+        wrapped_user = build_user_message(text)
 
-        try:
+        def _raw() -> Iterator[str]:
             with client.messages.stream(
                 model=self.model,
-                max_tokens=2048,
-                temperature=0.2,
+                max_tokens=4096,
+                temperature=0.0,
                 system=system_prompt,
-                messages=[{"role": "user", "content": text}],
+                messages=[{"role": "user", "content": wrapped_user}],
             ) as stream:
                 for delta in stream.text_stream:
                     if delta:
                         yield delta
+
+        try:
+            yield from stream_postprocess(_raw(), source_len=len(text))
         except AuthenticationError as e:
             raise TranslationError(
-                "Недействительный API-ключ Anthropic. Введите ключ заново в «Настройках».",
+                t("err.invalid_key_anthropic"),
                 kind="auth",
             ) from e
         except RateLimitError as e:
-            raise TranslationError("Превышен лимит запросов Anthropic. Попробуйте позже.") from e
+            raise TranslationError(t("err.rate_limit_anthropic")) from e
         except APIConnectionError as e:
-            raise TranslationError("Нет соединения с Anthropic. Проверьте интернет.") from e
+            raise TranslationError(t("err.no_connection_anthropic")) from e
         except APIStatusError as e:
             status = getattr(e, "status_code", None)
             if status == 401:
                 raise TranslationError(
-                    "Недействительный API-ключ Anthropic. Введите ключ заново в «Настройках».",
+                    t("err.invalid_key_anthropic"),
                     kind="auth",
                 ) from e
-            raise TranslationError(f"Ошибка API Anthropic (код {status}).") from e
+            raise TranslationError(t("err.api_anthropic", status=status)) from e
         except TranslationError:
             raise
         except Exception as e:
-            raise TranslationError(f"Сбой перевода: {e}") from e
+            raise TranslationError(t("err.translation_generic", e=e)) from e

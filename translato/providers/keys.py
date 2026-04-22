@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import keyring
 
+from ..i18n import t
+
 KEYRING_SERVICE = "translato"
 KEY_OPENROUTER = "openrouter_api_key"
 KEY_ANTHROPIC = "anthropic_api_key"
@@ -18,11 +20,7 @@ def _set(user: str, key: str) -> None:
     key = key.strip()
     if not key.isascii():
         bad = [(i, hex(ord(c))) for i, c in enumerate(key) if ord(c) > 127]
-        raise ValueError(
-            f"Ключ содержит не-ASCII символы в позициях {bad}. "
-            "Скорее всего при вставке попала буква в другой кодировке. "
-            "Скопируйте ключ заново с сайта провайдера."
-        )
+        raise ValueError(t("err.key_non_ascii_chars", bad=bad))
     keyring.set_password(KEYRING_SERVICE, user, key)
 
 
