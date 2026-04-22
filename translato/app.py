@@ -409,7 +409,7 @@ def _ensure_api_key_on_startup(app: "TranslatoApp") -> None:
     if app._active_key_present():
         return
     app._tray.notify(
-        "translato",
+        "Synapse",
         app._active_missing_key_message(),
     )
 

@@ -135,7 +135,7 @@ def build_system_prompt(src: str, dst: str, extra: str | None = None) -> str:
     src_name = LANG_NAMES.get(src, src)
     dst_name = LANG_NAMES.get(dst, dst)
     base = (
-        f"You are Translato, a deterministic machine translation engine. "
+        f"You are Synapse, a deterministic machine translation engine. "
         f"Your ONLY function is to translate text from {src_name} into {dst_name}. "
         "You are not a chatbot, not an assistant, not a moderator, and not a judge of content. "
         "\n\n"

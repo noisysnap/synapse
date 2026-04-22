@@ -132,7 +132,7 @@ class _ProviderTab(QWidget):
     def _on_delete_clicked(self) -> None:
         reply = QMessageBox.question(
             self,
-            "translato",
+            "Synapse",
             t(
                 "settings.confirm_delete_key",
                 provider=PROVIDER_LABELS.get(self.provider_id, self.provider_id),
@@ -402,10 +402,6 @@ class TrayController:
         self._editor_action.triggered.connect(self._on_editor_requested)
         self._menu.addAction(self._editor_action)
 
-        self._provider_action = QAction(self._menu)
-        self._provider_action.setEnabled(False)  # информационная строка
-        self._menu.addAction(self._provider_action)
-
         self._settings_action = QAction(t("tray.settings"), self._menu)
         self._settings_action.triggered.connect(self.open_settings)
         self._menu.addAction(self._settings_action)
@@ -416,7 +412,7 @@ class TrayController:
         self._menu.addAction(self._quit_action)
 
         self.tray.setContextMenu(self._menu)
-        self._refresh_provider_indicator()
+        self._refresh_tooltip()
         self.tray.show()
 
     def apply_ui_language(self) -> None:
@@ -425,17 +421,11 @@ class TrayController:
         self._editor_action.setText(t("tray.editor"))
         self._settings_action.setText(t("tray.settings"))
         self._quit_action.setText(t("tray.quit"))
-        self._refresh_provider_indicator()
+        self._refresh_tooltip()
 
-    def _refresh_provider_indicator(self) -> None:
-        cfg = self._get_config()
-        pid = cfg.get("active_provider", "openrouter")
-        name = PROVIDER_LABELS.get(pid, pid)
-        has_key = bool(get_anthropic_key()) if pid == "anthropic" else bool(get_openrouter_key())
-        key_mark = t("tray.provider_ok") if has_key else t("tray.provider_no_key")
-        self._provider_action.setText(t("tray.provider_line", name=name, mark=key_mark))
+    def _refresh_tooltip(self) -> None:
         paused_suffix = t("tray.tooltip_paused_suffix") if self._paused else ""
-        self.tray.setToolTip(t("tray.tooltip", name=name) + paused_suffix)
+        self.tray.setToolTip(t("tray.tooltip") + paused_suffix)
 
     def _on_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -445,14 +435,14 @@ class TrayController:
         self._paused = not self._paused
         self._pause_action.setText(t("tray.resume") if self._paused else t("tray.pause"))
         self._on_pause_toggled(self._paused)
-        self._refresh_provider_indicator()
+        self._refresh_tooltip()
 
     def open_settings(self) -> bool:
         cfg = self._get_config()
         dlg = SettingsDialog(cfg=cfg)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             # Ключ мог быть удалён через кнопку внутри диалога — обновим индикатор.
-            self._refresh_provider_indicator()
+            self._refresh_tooltip()
             return False
 
         updates: dict[str, Any] = {
@@ -470,7 +460,7 @@ class TrayController:
             try:
                 set_openrouter_key(or_key)
             except ValueError as e:
-                QMessageBox.warning(None, "translato — OpenRouter", str(e))
+                QMessageBox.warning(None, "Synapse — OpenRouter", str(e))
                 return False
 
         an_model = dlg.anthropic_model()
@@ -481,11 +471,11 @@ class TrayController:
             try:
                 set_anthropic_key(an_key)
             except ValueError as e:
-                QMessageBox.warning(None, "translato — Anthropic", str(e))
+                QMessageBox.warning(None, "Synapse — Anthropic", str(e))
                 return False
 
         self._on_config_saved(updates)
-        self._refresh_provider_indicator()
+        self._refresh_tooltip()
         return True
 
     def notify(self, title: str, message: str) -> None:
@@ -495,6 +485,6 @@ class TrayController:
     def warn_missing_tray() -> None:
         QMessageBox.critical(
             None,
-            "translato",
+            "Synapse",
             t("tray.unavailable"),
         )

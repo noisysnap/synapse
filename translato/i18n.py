@@ -5,6 +5,9 @@ from typing import Any
 SUPPORTED_UI_LANGS: list[tuple[str, str]] = [
     ("ru", "Русский"),
     ("en", "English"),
+    ("ja", "日本語"),
+    ("es", "Español"),
+    ("pt", "Português"),
 ]
 
 DEFAULT_UI_LANG = "en"
@@ -17,10 +20,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "tray.editor": "Режим редактора",
         "tray.settings": "Настройки…",
         "tray.quit": "Выход",
-        "tray.provider_line": "Провайдер: {name}  [{mark}]",
-        "tray.provider_ok": "✓",
-        "tray.provider_no_key": "⚠ без ключа",
-        "tray.tooltip": "translato — {name}",
+        "tray.tooltip": "Synapse",
         "tray.tooltip_paused_suffix": " — пауза",
         "tray.unavailable": "Системный трей недоступен в этой системе.",
         # Уведомления
@@ -36,14 +36,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "popup.dst_tooltip": "Язык перевода",
         "popup.resize_tooltip": "Потяни, чтобы изменить размер",
         # Editor
-        "editor.title": "translato — редактор",
+        "editor.title": "Synapse — редактор",
         "editor.source_placeholder": "Введите текст для перевода…",
         "editor.translation_placeholder": "Перевод появится здесь",
         "editor.swap_tooltip": "Поменять языки местами",
         "editor.translating": "Переводится…",
         "editor.ready": "Готово",
         # Диалог настроек
-        "settings.title": "Настройки translato",
+        "settings.title": "Настройки Synapse",
         "settings.tab_provider": "Провайдер",
         "settings.tab_instruction": "Инструкция",
         "settings.tab_languages": "Языки",
@@ -77,10 +77,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
         "settings.translation_lang_title": "Язык перевода по умолчанию:",
         "settings.translation_lang_hint": (
-            "Этот язык будет использоваться как целевой при переводе. "
-            "Если исходный текст уже на этом языке, перевод пойдёт в обратную сторону "
-            "(между русским и английским). В окне перевода язык можно быстро сменить "
-            "в выпадающем списке."
+            "Основной язык, на который переводится текст. "
+            "Если исходный текст уже на нём, перевод пойдёт на язык оригинала. "
+            "Сменить язык можно в выпадающем списке окна перевода."
         ),
         "settings.ui_lang_title": "Язык интерфейса:",
         "settings.ui_lang_hint": (
@@ -130,10 +129,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "tray.editor": "Edit mode",
         "tray.settings": "Settings…",
         "tray.quit": "Quit",
-        "tray.provider_line": "Provider: {name}  [{mark}]",
-        "tray.provider_ok": "✓",
-        "tray.provider_no_key": "⚠ no key",
-        "tray.tooltip": "translato — {name}",
+        "tray.tooltip": "Synapse",
         "tray.tooltip_paused_suffix": " — paused",
         "tray.unavailable": "System tray is not available on this system.",
         # Notifications
@@ -149,14 +145,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "popup.dst_tooltip": "Target language",
         "popup.resize_tooltip": "Drag to resize",
         # Editor
-        "editor.title": "translato — editor",
+        "editor.title": "Synapse — editor",
         "editor.source_placeholder": "Enter text to translate…",
         "editor.translation_placeholder": "Translation will appear here",
         "editor.swap_tooltip": "Swap languages",
         "editor.translating": "Translating…",
         "editor.ready": "Ready",
         # Settings dialog
-        "settings.title": "translato Settings",
+        "settings.title": "Synapse Settings",
         "settings.tab_provider": "Provider",
         "settings.tab_instruction": "Instruction",
         "settings.tab_languages": "Languages",
@@ -190,10 +186,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
         "settings.translation_lang_title": "Default target language:",
         "settings.translation_lang_hint": (
-            "This language is used as the target for translation. "
-            "If the source text is already in this language, translation flips direction "
-            "(between Russian and English). You can quickly change the language "
-            "in the dropdown inside the translation popup."
+            "The main language to translate into. "
+            "If the source text is already in it, translation goes into the source language instead. "
+            "You can change the language in the dropdown of the translation popup."
         ),
         "settings.ui_lang_title": "Interface language:",
         "settings.ui_lang_hint": (
@@ -234,6 +229,333 @@ _STRINGS: dict[str, dict[str, str]] = {
             "The key contains non-ASCII characters at positions {bad}. "
             "Most likely a character in a different encoding was pasted. "
             "Copy the key again from the provider's site."
+        ),
+    },
+    "ja": {
+        # トレイ
+        "tray.pause": "一時停止",
+        "tray.resume": "再開",
+        "tray.editor": "エディタモード",
+        "tray.settings": "設定…",
+        "tray.quit": "終了",
+        "tray.tooltip": "Synapse",
+        "tray.tooltip_paused_suffix": " — 一時停止中",
+        "tray.unavailable": "このシステムではシステムトレイを利用できません。",
+        # 通知
+        "notify.missing_key_openrouter": "OpenRouter の API キーが設定されていません。トレイの「設定」を開いてください。",
+        "notify.missing_key_anthropic": "Anthropic の API キーが設定されていません。トレイの「設定」を開いてください。",
+        # ポップアップ
+        "popup.translating": "翻訳中…",
+        "popup.updating": "更新中…",
+        "popup.copy": "コピー",
+        "popup.copied": "コピーしました",
+        "popup.edit": "エディタ",
+        "popup.src_tooltip": "原文の言語",
+        "popup.dst_tooltip": "翻訳先の言語",
+        "popup.resize_tooltip": "ドラッグしてサイズを変更",
+        # エディタ
+        "editor.title": "Synapse — エディタ",
+        "editor.source_placeholder": "翻訳するテキストを入力…",
+        "editor.translation_placeholder": "翻訳結果はここに表示されます",
+        "editor.swap_tooltip": "言語を入れ替える",
+        "editor.translating": "翻訳中…",
+        "editor.ready": "準備完了",
+        # 設定ダイアログ
+        "settings.title": "Synapse の設定",
+        "settings.tab_provider": "プロバイダ",
+        "settings.tab_instruction": "指示",
+        "settings.tab_languages": "言語",
+        "settings.provider_label": "プロバイダ:",
+        "settings.active_now": "現在の使用中: <b>{name}</b>",
+        "settings.will_switch": "現在の使用中: <b>{current}</b>。「OK」を押すと <b>{next}</b> に切り替わります。",
+        "settings.provider_hint": (
+            "リストで選択したプロバイダは「OK」を押すと有効になります。"
+            "両方のプロバイダのキーは別々に保存されるので、両方を保持できます。"
+        ),
+        "settings.model_label": "モデル:",
+        "settings.new_key_label": "新しいキー:",
+        "settings.delete_key_btn": "保存されたキーを削除",
+        "settings.key_saved": '<span style="color:#2e7d32;">● キーを保存済み:</span> <code>{mask}</code>',
+        "settings.key_missing": '<span style="color:#c62828;">● キーが未設定</span>',
+        "settings.key_replace_placeholder": "(保存されたキーを置き換えるには入力してください)",
+        "settings.confirm_delete_key": "Windows 資格情報マネージャーから保存された {provider} のキーを削除しますか?",
+        "settings.link_openrouter": 'OpenRouter のキー: <a href="https://openrouter.ai/keys">openrouter.ai/keys</a>',
+        "settings.link_anthropic": (
+            'Anthropic のキー: <a href="https://console.anthropic.com/settings/keys">'
+            'console.anthropic.com/settings/keys</a>'
+        ),
+        "settings.instruction_title": "モデルへの追加指示:",
+        "settings.instruction_placeholder": (
+            "メインのプロンプトに追加されます。置き換えはされません。\n"
+            "例:「フォーマルな文体で」または「IT 用語は英語のままにする」。"
+        ),
+        "settings.instruction_hint": (
+            "この指示は翻訳者のシステムプロンプトに上乗せされ、"
+            "それを上書きすることはできません。両方のプロバイダで動作します。"
+        ),
+        "settings.translation_lang_title": "既定の翻訳先言語:",
+        "settings.translation_lang_hint": (
+            "テキストを翻訳するメイン言語です。"
+            "原文がすでにこの言語の場合は、原文の言語へ翻訳されます。"
+            "翻訳ポップアップのドロップダウンから言語を変更できます。"
+        ),
+        "settings.ui_lang_title": "インターフェース言語:",
+        "settings.ui_lang_hint": (
+            "アプリ自体の言語: トレイメニュー、設定画面、ツールチップ。"
+            "変更後は設定ウィンドウを開き直すだけで反映されます。"
+        ),
+        # プロバイダのエラー
+        "err.openai_pkg_missing": "openai パッケージがインストールされていません: {e}",
+        "err.anthropic_pkg_missing": "anthropic パッケージがインストールされていません: {e}。インストール: pip install anthropic",
+        "err.anthropic_pkg_missing_short": "anthropic パッケージがインストールされていません: {e}",
+        "err.key_missing_openrouter": "OpenRouter の API キーが設定されていません。トレイの「設定」を開いてください。",
+        "err.key_missing_anthropic": "Anthropic の API キーが設定されていません。トレイの「設定」を開いてください。",
+        "err.key_non_ascii_openrouter": (
+            "保存されたキーに非 ASCII 文字が含まれています。"
+            "openrouter.ai/keys からキーをコピーし直し、"
+            "「設定」から貼り付けてください。"
+        ),
+        "err.key_non_ascii_anthropic": (
+            "保存されたキーに非 ASCII 文字が含まれています。"
+            "console.anthropic.com からキーをコピーし直し、"
+            "「設定」から貼り付けてください。"
+        ),
+        "err.invalid_key_openrouter": "無効な API キーです。「設定」でキーを再入力してください。",
+        "err.invalid_key_anthropic": "無効な Anthropic API キーです。「設定」でキーを再入力してください。",
+        "err.rate_limit_openrouter": "OpenRouter のリクエスト上限を超えました。後でもう一度お試しください。",
+        "err.rate_limit_anthropic": "Anthropic のリクエスト上限を超えました。後でもう一度お試しください。",
+        "err.no_connection_openrouter": "OpenRouter に接続できません。インターネット接続を確認してください。",
+        "err.no_connection_anthropic": "Anthropic に接続できません。インターネット接続を確認してください。",
+        "err.api_generic": "API エラー (コード {status})。",
+        "err.api_anthropic": "Anthropic API エラー (コード {status})。",
+        "err.translation_generic": "翻訳に失敗しました: {e}",
+        "err.empty_response": "モデルからの応答が空です。",
+        "err.refusal": (
+            "モデルはこの断片の翻訳を拒否しました。"
+            "もう一度試すか、テキストを少し修正してください。"
+        ),
+        "err.key_non_ascii_chars": (
+            "キーの位置 {bad} に非 ASCII 文字が含まれています。"
+            "貼り付け時に別のエンコーディングの文字が混入した可能性があります。"
+            "プロバイダのサイトからキーをコピーし直してください。"
+        ),
+    },
+    "es": {
+        # Bandeja
+        "tray.pause": "Pausar",
+        "tray.resume": "Reanudar",
+        "tray.editor": "Modo editor",
+        "tray.settings": "Ajustes…",
+        "tray.quit": "Salir",
+        "tray.tooltip": "Synapse",
+        "tray.tooltip_paused_suffix": " — en pausa",
+        "tray.unavailable": "La bandeja del sistema no está disponible en este sistema.",
+        # Notificaciones
+        "notify.missing_key_openrouter": "La clave API de OpenRouter no está configurada. Abre «Ajustes» en la bandeja.",
+        "notify.missing_key_anthropic": "La clave API de Anthropic no está configurada. Abre «Ajustes» en la bandeja.",
+        # Popup
+        "popup.translating": "Traduciendo…",
+        "popup.updating": "Actualizando…",
+        "popup.copy": "Copiar",
+        "popup.copied": "Copiado",
+        "popup.edit": "Editor",
+        "popup.src_tooltip": "Idioma de origen",
+        "popup.dst_tooltip": "Idioma de destino",
+        "popup.resize_tooltip": "Arrastra para cambiar el tamaño",
+        # Editor
+        "editor.title": "Synapse — editor",
+        "editor.source_placeholder": "Introduce el texto a traducir…",
+        "editor.translation_placeholder": "La traducción aparecerá aquí",
+        "editor.swap_tooltip": "Intercambiar idiomas",
+        "editor.translating": "Traduciendo…",
+        "editor.ready": "Listo",
+        # Diálogo de ajustes
+        "settings.title": "Ajustes de Synapse",
+        "settings.tab_provider": "Proveedor",
+        "settings.tab_instruction": "Instrucción",
+        "settings.tab_languages": "Idiomas",
+        "settings.provider_label": "Proveedor:",
+        "settings.active_now": "En uso actualmente: <b>{name}</b>",
+        "settings.will_switch": "En uso actualmente: <b>{current}</b>. Tras pulsar «OK» se cambiará a <b>{next}</b>.",
+        "settings.provider_hint": (
+            "El proveedor seleccionado en la lista se activa al pulsar «OK». "
+            "Las claves de ambos proveedores se guardan de forma independiente, puedes conservar las dos."
+        ),
+        "settings.model_label": "Modelo:",
+        "settings.new_key_label": "Nueva clave:",
+        "settings.delete_key_btn": "Eliminar la clave guardada",
+        "settings.key_saved": '<span style="color:#2e7d32;">● Clave guardada:</span> <code>{mask}</code>',
+        "settings.key_missing": '<span style="color:#c62828;">● Clave no configurada</span>',
+        "settings.key_replace_placeholder": "(escribe aquí para reemplazar la clave guardada)",
+        "settings.confirm_delete_key": "¿Eliminar la clave guardada de {provider} del Administrador de credenciales de Windows?",
+        "settings.link_openrouter": 'Clave de OpenRouter: <a href="https://openrouter.ai/keys">openrouter.ai/keys</a>',
+        "settings.link_anthropic": (
+            'Clave de Anthropic: <a href="https://console.anthropic.com/settings/keys">'
+            'console.anthropic.com/settings/keys</a>'
+        ),
+        "settings.instruction_title": "Instrucción adicional para el modelo:",
+        "settings.instruction_placeholder": (
+            "Se añade al prompt principal, no lo reemplaza.\n"
+            "Por ejemplo: «Usa un tono formal» o «Mantén los términos de TI en inglés»."
+        ),
+        "settings.instruction_hint": (
+            "La instrucción se aplica sobre el prompt del sistema del traductor "
+            "y no puede anularlo. Funciona para ambos proveedores."
+        ),
+        "settings.translation_lang_title": "Idioma de destino predeterminado:",
+        "settings.translation_lang_hint": (
+            "Idioma principal al que se traduce el texto. "
+            "Si el texto original ya está en él, la traducción irá al idioma de origen. "
+            "Puedes cambiar el idioma en la lista desplegable de la ventana de traducción."
+        ),
+        "settings.ui_lang_title": "Idioma de la interfaz:",
+        "settings.ui_lang_hint": (
+            "Idioma de la propia aplicación: menú de la bandeja, ventana de ajustes, tooltips. "
+            "Tras cambiarlo, basta con volver a abrir la ventana de ajustes."
+        ),
+        # Errores de los proveedores
+        "err.openai_pkg_missing": "El paquete openai no está instalado: {e}",
+        "err.anthropic_pkg_missing": "El paquete anthropic no está instalado: {e}. Instálalo: pip install anthropic",
+        "err.anthropic_pkg_missing_short": "El paquete anthropic no está instalado: {e}",
+        "err.key_missing_openrouter": "La clave API de OpenRouter no está configurada. Abre «Ajustes» en la bandeja.",
+        "err.key_missing_anthropic": "La clave API de Anthropic no está configurada. Abre «Ajustes» en la bandeja.",
+        "err.key_non_ascii_openrouter": (
+            "La clave guardada contiene caracteres no ASCII. "
+            "Copia de nuevo la clave desde openrouter.ai/keys "
+            "y pégala mediante «Ajustes»."
+        ),
+        "err.key_non_ascii_anthropic": (
+            "La clave guardada contiene caracteres no ASCII. "
+            "Copia de nuevo la clave desde console.anthropic.com "
+            "y pégala mediante «Ajustes»."
+        ),
+        "err.invalid_key_openrouter": "Clave API no válida. Vuelve a introducirla en «Ajustes».",
+        "err.invalid_key_anthropic": "Clave API de Anthropic no válida. Vuelve a introducirla en «Ajustes».",
+        "err.rate_limit_openrouter": "Se ha superado el límite de solicitudes de OpenRouter. Inténtalo más tarde.",
+        "err.rate_limit_anthropic": "Se ha superado el límite de solicitudes de Anthropic. Inténtalo más tarde.",
+        "err.no_connection_openrouter": "Sin conexión con OpenRouter. Comprueba tu conexión a Internet.",
+        "err.no_connection_anthropic": "Sin conexión con Anthropic. Comprueba tu conexión a Internet.",
+        "err.api_generic": "Error de API (código {status}).",
+        "err.api_anthropic": "Error de la API de Anthropic (código {status}).",
+        "err.translation_generic": "Fallo al traducir: {e}",
+        "err.empty_response": "Respuesta vacía del modelo.",
+        "err.refusal": (
+            "El modelo se negó a traducir este fragmento. "
+            "Inténtalo de nuevo o modifica ligeramente el texto."
+        ),
+        "err.key_non_ascii_chars": (
+            "La clave contiene caracteres no ASCII en las posiciones {bad}. "
+            "Lo más probable es que al pegar se colara un carácter de otra codificación. "
+            "Copia de nuevo la clave desde el sitio del proveedor."
+        ),
+    },
+    "pt": {
+        # Bandeja
+        "tray.pause": "Pausar",
+        "tray.resume": "Retomar",
+        "tray.editor": "Modo editor",
+        "tray.settings": "Configurações…",
+        "tray.quit": "Sair",
+        "tray.tooltip": "Synapse",
+        "tray.tooltip_paused_suffix": " — em pausa",
+        "tray.unavailable": "A bandeja do sistema não está disponível neste sistema.",
+        # Notificações
+        "notify.missing_key_openrouter": "A chave da API do OpenRouter não está definida. Abra «Configurações» na bandeja.",
+        "notify.missing_key_anthropic": "A chave da API da Anthropic não está definida. Abra «Configurações» na bandeja.",
+        # Popup
+        "popup.translating": "Traduzindo…",
+        "popup.updating": "Atualizando…",
+        "popup.copy": "Copiar",
+        "popup.copied": "Copiado",
+        "popup.edit": "Editor",
+        "popup.src_tooltip": "Idioma de origem",
+        "popup.dst_tooltip": "Idioma de destino",
+        "popup.resize_tooltip": "Arraste para redimensionar",
+        # Editor
+        "editor.title": "Synapse — editor",
+        "editor.source_placeholder": "Digite o texto para traduzir…",
+        "editor.translation_placeholder": "A tradução aparecerá aqui",
+        "editor.swap_tooltip": "Trocar idiomas",
+        "editor.translating": "Traduzindo…",
+        "editor.ready": "Pronto",
+        # Diálogo de configurações
+        "settings.title": "Configurações do Synapse",
+        "settings.tab_provider": "Provedor",
+        "settings.tab_instruction": "Instrução",
+        "settings.tab_languages": "Idiomas",
+        "settings.provider_label": "Provedor:",
+        "settings.active_now": "Em uso no momento: <b>{name}</b>",
+        "settings.will_switch": "Em uso no momento: <b>{current}</b>. Após «OK» mudará para <b>{next}</b>.",
+        "settings.provider_hint": (
+            "O provedor selecionado na lista é ativado ao clicar em «OK». "
+            "As chaves de ambos os provedores são armazenadas de forma independente, você pode manter as duas."
+        ),
+        "settings.model_label": "Modelo:",
+        "settings.new_key_label": "Nova chave:",
+        "settings.delete_key_btn": "Excluir chave salva",
+        "settings.key_saved": '<span style="color:#2e7d32;">● Chave salva:</span> <code>{mask}</code>',
+        "settings.key_missing": '<span style="color:#c62828;">● Chave não definida</span>',
+        "settings.key_replace_placeholder": "(digite aqui para substituir a chave salva)",
+        "settings.confirm_delete_key": "Excluir a chave salva de {provider} do Gerenciador de Credenciais do Windows?",
+        "settings.link_openrouter": 'Chave do OpenRouter: <a href="https://openrouter.ai/keys">openrouter.ai/keys</a>',
+        "settings.link_anthropic": (
+            'Chave da Anthropic: <a href="https://console.anthropic.com/settings/keys">'
+            'console.anthropic.com/settings/keys</a>'
+        ),
+        "settings.instruction_title": "Instrução adicional para o modelo:",
+        "settings.instruction_placeholder": (
+            "Adicionada ao prompt principal, não o substitui.\n"
+            "Por exemplo: «Use um tom formal» ou «Mantenha os termos de TI em inglês»."
+        ),
+        "settings.instruction_hint": (
+            "A instrução é aplicada sobre o prompt de sistema do tradutor "
+            "e não pode sobrescrevê-lo. Funciona para ambos os provedores."
+        ),
+        "settings.translation_lang_title": "Idioma de destino padrão:",
+        "settings.translation_lang_hint": (
+            "Idioma principal para o qual o texto é traduzido. "
+            "Se o texto original já estiver nele, a tradução vai para o idioma de origem. "
+            "Você pode mudar o idioma na lista suspensa da janela de tradução."
+        ),
+        "settings.ui_lang_title": "Idioma da interface:",
+        "settings.ui_lang_hint": (
+            "Idioma do próprio aplicativo: menu da bandeja, janela de configurações, dicas. "
+            "Após alterar, basta reabrir a janela de configurações."
+        ),
+        # Erros dos provedores
+        "err.openai_pkg_missing": "O pacote openai não está instalado: {e}",
+        "err.anthropic_pkg_missing": "O pacote anthropic não está instalado: {e}. Instale: pip install anthropic",
+        "err.anthropic_pkg_missing_short": "O pacote anthropic não está instalado: {e}",
+        "err.key_missing_openrouter": "A chave da API do OpenRouter não está definida. Abra «Configurações» na bandeja.",
+        "err.key_missing_anthropic": "A chave da API da Anthropic não está definida. Abra «Configurações» na bandeja.",
+        "err.key_non_ascii_openrouter": (
+            "A chave salva contém caracteres não ASCII. "
+            "Copie a chave novamente em openrouter.ai/keys "
+            "e cole-a via «Configurações»."
+        ),
+        "err.key_non_ascii_anthropic": (
+            "A chave salva contém caracteres não ASCII. "
+            "Copie a chave novamente em console.anthropic.com "
+            "e cole-a via «Configurações»."
+        ),
+        "err.invalid_key_openrouter": "Chave de API inválida. Digite a chave novamente em «Configurações».",
+        "err.invalid_key_anthropic": "Chave de API da Anthropic inválida. Digite a chave novamente em «Configurações».",
+        "err.rate_limit_openrouter": "Limite de requisições do OpenRouter excedido. Tente novamente mais tarde.",
+        "err.rate_limit_anthropic": "Limite de requisições da Anthropic excedido. Tente novamente mais tarde.",
+        "err.no_connection_openrouter": "Sem conexão com o OpenRouter. Verifique sua internet.",
+        "err.no_connection_anthropic": "Sem conexão com a Anthropic. Verifique sua internet.",
+        "err.api_generic": "Erro da API (código {status}).",
+        "err.api_anthropic": "Erro da API da Anthropic (código {status}).",
+        "err.translation_generic": "Falha na tradução: {e}",
+        "err.empty_response": "Resposta vazia do modelo.",
+        "err.refusal": (
+            "O modelo recusou-se a traduzir este trecho. "
+            "Tente novamente ou altere ligeiramente o texto."
+        ),
+        "err.key_non_ascii_chars": (
+            "A chave contém caracteres não ASCII nas posições {bad}. "
+            "Provavelmente, ao colar, entrou um caractere de outra codificação. "
+            "Copie a chave novamente no site do provedor."
         ),
     },
 }
