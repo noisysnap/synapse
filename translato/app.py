@@ -1,25 +1,19 @@
 from __future__ import annotations
 
 import sys
-import traceback
 
 import pyperclip
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from .config import debug_enabled, load_config, save_config
-from .lang import detect_direction, direction_label
+from .config import load_config, save_config
+from .lang import normalize_lang_code, resolve_direction
 from .popup import PopupWindow
 from .providers.base import TranslationError
 from .providers.openrouter import OpenRouterTranslator
 from .providers.anthropic_direct import AnthropicTranslator
 from .providers.keys import get_openrouter_key, get_anthropic_key
 from .tray import TrayController, make_tray_icon
-
-
-def _dbg(*a) -> None:
-    if debug_enabled():
-        print("[translato]", *a, file=sys.stderr)
 
 
 class TranslationSignals(QObject):
@@ -58,7 +52,6 @@ class TranslationJob(QRunnable):
         except TranslationError as e:
             self._signals.failure.emit(self._id, str(e), e.kind)
         except Exception as e:
-            _dbg("unexpected error:", traceback.format_exc())
             self._signals.failure.emit(self._id, f"Сбой перевода: {e}", "generic")
 
 
@@ -91,10 +84,20 @@ class TranslatoApp(QObject):
 
         popup_cfg = self._cfg.get("popup", {})
         self._popup = PopupWindow(
-            default_width=int(popup_cfg.get("default_width", popup_cfg.get("max_width", 320))),
+            default_width=int(popup_cfg.get("default_width", popup_cfg.get("max_width", 480))),
+            default_height=int(popup_cfg.get("default_height", 320)),
             cursor_offset_x=int(popup_cfg.get("cursor_offset_x", 16)),
             cursor_offset_y=int(popup_cfg.get("cursor_offset_y", 16)),
+            preferred_dst=normalize_lang_code(self._cfg.get("preferred_dst_lang"), "en"),
         )
+        self._popup.dst_language_changed.connect(self._on_popup_dst_changed)
+        self._popup.src_language_changed.connect(self._on_popup_src_changed)
+        self._last_source_text: str = ""
+        self._current_src: str = "en"
+        self._current_dst: str = normalize_lang_code(
+            self._cfg.get("preferred_dst_lang"), "en"
+        )
+        self._soft_by_request: dict[int, bool] = {}
 
         self._tray = TrayController(
             icon=make_tray_icon(),
@@ -122,9 +125,16 @@ class TranslatoApp(QObject):
         prev_or_model = self._cfg["openrouter"]["model"]
         prev_or_url = self._cfg["openrouter"]["base_url"]
         prev_an_model = self._cfg["anthropic"]["model"]
+        prev_prompt = self._cfg.get("custom_prompt", "")
 
         if "active_provider" in cfg_updates:
             self._cfg["active_provider"] = cfg_updates["active_provider"]
+        if "custom_prompt" in cfg_updates:
+            self._cfg["custom_prompt"] = cfg_updates["custom_prompt"]
+        if "preferred_dst_lang" in cfg_updates:
+            new_dst = normalize_lang_code(cfg_updates["preferred_dst_lang"], "en")
+            self._cfg["preferred_dst_lang"] = new_dst
+            self._popup.set_preferred_dst(new_dst)
         if "openrouter" in cfg_updates:
             self._cfg["openrouter"].update(cfg_updates["openrouter"])
         if "anthropic" in cfg_updates:
@@ -132,22 +142,29 @@ class TranslatoApp(QObject):
 
         save_config(self._cfg)
 
+        prompt_changed = self._cfg.get("custom_prompt", "") != prev_prompt
         if (self._cfg["openrouter"]["model"] != prev_or_model
-                or self._cfg["openrouter"]["base_url"] != prev_or_url):
+                or self._cfg["openrouter"]["base_url"] != prev_or_url
+                or prompt_changed):
             self._openrouter = None
-        if self._cfg["anthropic"]["model"] != prev_an_model:
+        if self._cfg["anthropic"]["model"] != prev_an_model or prompt_changed:
             self._anthropic = None
 
     def _get_translator(self):
         provider = self._cfg.get("active_provider", "openrouter")
+        custom_prompt = self._cfg.get("custom_prompt", "")
         if provider == "anthropic":
             if self._anthropic is None:
-                self._anthropic = AnthropicTranslator(model=self._cfg["anthropic"]["model"])
+                self._anthropic = AnthropicTranslator(
+                    model=self._cfg["anthropic"]["model"],
+                    custom_prompt=custom_prompt,
+                )
             return self._anthropic
         if self._openrouter is None:
             self._openrouter = OpenRouterTranslator(
                 model=self._cfg["openrouter"]["model"],
                 base_url=self._cfg["openrouter"]["base_url"],
+                custom_prompt=custom_prompt,
             )
         return self._openrouter
 
@@ -178,22 +195,60 @@ class TranslatoApp(QObject):
             return
         try:
             text = pyperclip.paste()
-        except Exception as e:
-            _dbg("clipboard error:", e)
+        except Exception:
             return
         if not text or not text.strip():
             return
+        self._last_source_text = text
+        preferred_dst = normalize_lang_code(self._cfg.get("preferred_dst_lang"), "en")
+        src, dst = resolve_direction(text, preferred_dst)
+        self._current_src = src
+        self._current_dst = dst
+        self._run_translation(text, src, dst, soft=False)
 
-        src, dst = detect_direction(text)
+    @Slot(str)
+    def _on_popup_dst_changed(self, new_dst: str) -> None:
+        """Пользователь сменил язык перевода прямо в popup — перевод обновляется
+        без мигания «Переводится…», старый текст остаётся до первого чанка."""
+        dst = normalize_lang_code(new_dst, "en")
+        if not self._last_source_text or not self._last_source_text.strip():
+            return
+        # Пересчитываем src по тексту, чтобы обработать случай ru↔en инверсии
+        # (если dst совпал с текущим src — направление переворачивается).
+        src, dst = resolve_direction(self._last_source_text, dst)
+        self._current_src = src
+        self._current_dst = dst
+        self._run_translation(self._last_source_text, src, dst, soft=True)
+
+    @Slot(str)
+    def _on_popup_src_changed(self, new_src: str) -> None:
+        """Пользователь вручную сменил язык оригинала — используем его как есть,
+        направление не пересчитываем."""
+        src = normalize_lang_code(new_src, "en")
+        if not self._last_source_text or not self._last_source_text.strip():
+            return
+        dst = self._current_dst
+        if src == dst:
+            # Нельзя переводить на тот же язык: инвертируем dst на разумный дефолт.
+            dst = "ru" if src == "en" else "en"
+        self._current_src = src
+        self._current_dst = dst
+        self._run_translation(self._last_source_text, src, dst, soft=True)
+
+    def _run_translation(self, text: str, src: str, dst: str, *, soft: bool) -> None:
         if not self._active_key_present():
-            self._popup.show_loading(direction_label(src, dst))
+            self._popup.show_loading(src, dst)
             self._popup.show_error(self._active_missing_key_message())
             return
 
-        self._popup.show_loading(direction_label(src, dst))
+        if soft:
+            self._popup.set_direction(src, dst)
+        else:
+            self._popup.show_loading(src, dst)
 
         self._request_counter += 1
         request_id = self._request_counter
+        self._soft_by_request[request_id] = soft
 
         translator = self._get_translator()
         job = TranslationJob(translator, text, src, dst, request_id, self._signals)
@@ -203,7 +258,10 @@ class TranslatoApp(QObject):
     def _on_translation_started(self, request_id: int) -> None:
         if request_id != self._request_counter:
             return
-        self._popup.begin_translation()
+        if self._soft_by_request.get(request_id, False):
+            self._popup.begin_soft_replace()
+        else:
+            self._popup.begin_translation()
 
     @Slot(int, str)
     def _on_translation_delta(self, request_id: int, chunk: str) -> None:
@@ -213,12 +271,14 @@ class TranslatoApp(QObject):
 
     @Slot(int)
     def _on_translation_finished(self, request_id: int) -> None:
+        self._soft_by_request.pop(request_id, None)
         if request_id != self._request_counter:
             return
         self._popup.finish_translation()
 
     @Slot(int, str, str)
     def _on_translation_failure(self, request_id: int, message: str, kind: str) -> None:
+        self._soft_by_request.pop(request_id, None)
         if request_id != self._request_counter:
             return
         self._popup.show_error(message)

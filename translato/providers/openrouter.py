@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import sys
 from typing import Iterator
 
 from .base import TranslationError, build_system_prompt
@@ -11,11 +9,6 @@ from .keys import (
     delete_openrouter_key,
 )
 
-
-def _dbg(*a) -> None:
-    if os.environ.get("TRANSLATO_DEBUG") == "1":
-        print("[translato/openrouter]", *a, file=sys.stderr, flush=True)
-
 # Совместимость со старым импортом из setup_key.py и tray.py.
 get_api_key = get_openrouter_key
 set_api_key = set_openrouter_key
@@ -23,9 +16,10 @@ delete_api_key = delete_openrouter_key
 
 
 class OpenRouterTranslator:
-    def __init__(self, model: str, base_url: str) -> None:
+    def __init__(self, model: str, base_url: str, custom_prompt: str = "") -> None:
         self.model = model
         self.base_url = base_url
+        self.custom_prompt = custom_prompt
         self._client = None
         self._client_key: str | None = None
 
@@ -66,8 +60,7 @@ class OpenRouterTranslator:
             raise TranslationError(f"Пакет openai не установлен: {e}")
 
         client = self._get_client(api_key)
-        system_prompt = build_system_prompt(src, dst)
-        _dbg(f"→ OpenRouter | model={self.model} | key=…{api_key[-4:]} | {src}->{dst}")
+        system_prompt = build_system_prompt(src, dst, extra=self.custom_prompt)
 
         try:
             stream = client.chat.completions.create(

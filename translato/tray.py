@@ -6,6 +6,7 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -14,13 +15,16 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
+    QStackedWidget,
     QSystemTrayIcon,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from .lang import POPULAR_LANGUAGES, language_display, normalize_lang_code
 from .providers.keys import (
     delete_anthropic_key,
     delete_openrouter_key,
@@ -81,6 +85,7 @@ class _ProviderTab(QWidget):
         self._delete_key = delete_key
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         info = QLabel(link_html)
         info.setOpenExternalLinks(True)
         info.setTextFormat(Qt.TextFormat.RichText)
@@ -143,6 +148,8 @@ class _ProviderTab(QWidget):
 
 
 class SettingsDialog(QDialog):
+    _PROVIDER_ORDER = ("openrouter", "anthropic")
+
     def __init__(self, cfg: dict[str, Any], parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Настройки translato")
@@ -150,12 +157,49 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        active = cfg.get("active_provider", "openrouter")
+        if active not in self._PROVIDER_ORDER:
+            active = "openrouter"
+        self._initial_active = active
+
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._build_provider_tab(cfg, active), "Провайдер")
+        self._tabs.addTab(
+            self._build_instruction_tab(cfg.get("custom_prompt", "")),
+            "Инструкция",
+        )
+        self._tabs.addTab(
+            self._build_languages_tab(cfg.get("preferred_dst_lang", "en")),
+            "Языки",
+        )
+        layout.addWidget(self._tabs)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.resize(540, self.sizeHint().height())
+
+    def _build_provider_tab(self, cfg: dict[str, Any], active: str) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+
+        selector_row = QHBoxLayout()
+        selector_row.addWidget(QLabel("Провайдер:"))
+        self._provider_combo = QComboBox()
+        for pid in self._PROVIDER_ORDER:
+            self._provider_combo.addItem(PROVIDER_LABELS[pid], pid)
+        self._provider_combo.setCurrentIndex(self._PROVIDER_ORDER.index(active))
+        selector_row.addWidget(self._provider_combo, 1)
+        page_layout.addLayout(selector_row)
+
         self._active_label = QLabel()
         self._active_label.setTextFormat(Qt.TextFormat.RichText)
         self._active_label.setStyleSheet("padding: 6px 4px;")
-        layout.addWidget(self._active_label)
-
-        self._tabs = QTabWidget()
+        page_layout.addWidget(self._active_label)
 
         self._openrouter_tab = _ProviderTab(
             provider_id="openrouter",
@@ -175,47 +219,86 @@ class SettingsDialog(QDialog):
             delete_key=delete_anthropic_key,
         )
 
-        self._tabs.addTab(self._openrouter_tab, "OpenRouter")
-        self._tabs.addTab(self._anthropic_tab, "Anthropic")
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self._openrouter_tab)
+        self._stack.addWidget(self._anthropic_tab)
+        self._stack.setCurrentIndex(self._PROVIDER_ORDER.index(active))
 
-        active = cfg.get("active_provider", "openrouter")
-        self._initial_active = active
-        self._tabs.setCurrentIndex(1 if active == "anthropic" else 0)
-        self._tabs.currentChanged.connect(self._update_active_label)
-        self._update_tab_titles()
-        self._update_active_label(self._tabs.currentIndex())
+        self._provider_combo.currentIndexChanged.connect(self._on_provider_changed)
 
-        layout.addWidget(self._tabs)
+        page_layout.addWidget(self._stack)
+        self._update_active_label()
 
         hint = QLabel(
-            "Активным становится провайдер той вкладки, на которой вы нажмёте «OK». "
-            "Ключи для обеих вкладок хранятся независимо, можно держать оба."
+            "Выбранный в списке провайдер становится активным после нажатия «OK». "
+            "Ключи для обоих провайдеров хранятся независимо, можно держать оба."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #666;")
-        layout.addWidget(hint)
+        page_layout.addWidget(hint)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        return page
+
+    def _build_languages_tab(self, current_code: str) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+
+        title = QLabel("Язык перевода по умолчанию:")
+        page_layout.addWidget(title)
+
+        self._lang_combo = QComboBox()
+        for code, name in POPULAR_LANGUAGES:
+            self._lang_combo.addItem(language_display(code, name), code)
+        normalized = normalize_lang_code(current_code, "en")
+        idx = self._lang_combo.findData(normalized)
+        if idx < 0:
+            idx = 0
+        self._lang_combo.setCurrentIndex(idx)
+        page_layout.addWidget(self._lang_combo)
+
+        hint = QLabel(
+            "Этот язык будет использоваться как целевой при переводе. "
+            "Если исходный текст уже на этом языке, перевод пойдёт в обратную сторону "
+            "(между русским и английским). В окне перевода язык можно быстро сменить "
+            "в выпадающем списке."
         )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #666;")
+        page_layout.addWidget(hint)
 
-        self.resize(500, self.sizeHint().height())
+        page_layout.addStretch(1)
+        return page
 
-    def _update_tab_titles(self) -> None:
-        # Метка «(активный)» остаётся у вкладки, которая была активна при открытии
-        # диалога — чтобы пользователь видел текущее состояние системы,
-        # а не то, что он прямо сейчас выбрал вкладкой.
-        for idx, pid in ((0, "openrouter"), (1, "anthropic")):
-            base = PROVIDER_LABELS[pid]
-            if pid == self._initial_active:
-                self._tabs.setTabText(idx, f"● {base} (активный)")
-            else:
-                self._tabs.setTabText(idx, base)
+    def _build_instruction_tab(self, current_value: str) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
 
-    def _update_active_label(self, _idx: int) -> None:
+        title = QLabel("Дополнительная инструкция для модели:")
+        page_layout.addWidget(title)
+
+        self._prompt_edit = QPlainTextEdit(current_value)
+        self._prompt_edit.setPlaceholderText(
+            "Добавляется поверх основного промпта, не заменяет его.\n"
+            "Например: «Используй формальный стиль» или «Термины из IT оставляй по-английски»."
+        )
+        self._prompt_edit.setMinimumHeight(180)
+        page_layout.addWidget(self._prompt_edit, 1)
+
+        hint = QLabel(
+            "Инструкция применяется поверх системного промпта переводчика "
+            "и не может его переопределить. Работает для обоих провайдеров."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #666;")
+        page_layout.addWidget(hint)
+
+        return page
+
+    def _on_provider_changed(self, idx: int) -> None:
+        self._stack.setCurrentIndex(idx)
+        self._update_active_label()
+
+    def _update_active_label(self) -> None:
         selected = self.active_provider()
         selected_name = PROVIDER_LABELS[selected]
         initial_name = PROVIDER_LABELS[self._initial_active]
@@ -230,7 +313,10 @@ class SettingsDialog(QDialog):
             )
 
     def active_provider(self) -> str:
-        return "anthropic" if self._tabs.currentIndex() == 1 else "openrouter"
+        data = self._provider_combo.currentData()
+        if isinstance(data, str) and data in self._PROVIDER_ORDER:
+            return data
+        return "openrouter"
 
     def openrouter_model(self) -> str:
         return self._openrouter_tab.model_edit.text().strip()
@@ -243,6 +329,15 @@ class SettingsDialog(QDialog):
 
     def anthropic_key(self) -> str:
         return self._anthropic_tab.key_edit.text().strip()
+
+    def custom_prompt(self) -> str:
+        return self._prompt_edit.toPlainText().strip()
+
+    def preferred_dst_lang(self) -> str:
+        data = self._lang_combo.currentData()
+        if isinstance(data, str):
+            return normalize_lang_code(data, "en")
+        return "en"
 
 
 class TrayController:
@@ -313,7 +408,11 @@ class TrayController:
             self._refresh_provider_indicator()
             return False
 
-        updates: dict[str, Any] = {"active_provider": dlg.active_provider()}
+        updates: dict[str, Any] = {
+            "active_provider": dlg.active_provider(),
+            "custom_prompt": dlg.custom_prompt(),
+            "preferred_dst_lang": dlg.preferred_dst_lang(),
+        }
 
         or_model = dlg.openrouter_model()
         if or_model:

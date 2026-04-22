@@ -1,21 +1,15 @@
 from __future__ import annotations
 
-import os
-import sys
 from typing import Iterator
 
 from .base import TranslationError, build_system_prompt
 from .keys import get_anthropic_key
 
 
-def _dbg(*a) -> None:
-    if os.environ.get("TRANSLATO_DEBUG") == "1":
-        print("[translato/anthropic]", *a, file=sys.stderr, flush=True)
-
-
 class AnthropicTranslator:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, custom_prompt: str = "") -> None:
         self.model = model
+        self.custom_prompt = custom_prompt
         self._client = None
         self._client_key: str | None = None
 
@@ -58,8 +52,7 @@ class AnthropicTranslator:
             raise TranslationError(f"Пакет anthropic не установлен: {e}")
 
         client = self._get_client(api_key)
-        system_prompt = build_system_prompt(src, dst)
-        _dbg(f"→ Anthropic direct | model={self.model} | key=…{api_key[-4:]} | {src}->{dst}")
+        system_prompt = build_system_prompt(src, dst, extra=self.custom_prompt)
 
         try:
             with client.messages.stream(
@@ -72,8 +65,6 @@ class AnthropicTranslator:
                 for delta in stream.text_stream:
                     if delta:
                         yield delta
-                final = stream.get_final_message()
-                _dbg(f"← Anthropic reply | id={final.id} | model={final.model} | usage={final.usage}")
         except AuthenticationError as e:
             raise TranslationError(
                 "Недействительный API-ключ Anthropic. Введите ключ заново в «Настройках».",

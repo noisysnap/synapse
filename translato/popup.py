@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+from time import monotonic as _monotonic
+
 from PySide6.QtCore import Qt, QEvent, QPoint, QSize, QTimer, Signal
 from PySide6.QtGui import QCursor, QGuiApplication, QKeyEvent, QClipboard
 from PySide6.QtWidgets import (
@@ -7,29 +10,200 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPlainTextEdit,
     QPushButton,
-    QScrollArea,
     QSizeGrip,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from pynput import mouse as pynput_mouse
 
+from .config import debug_enabled
+from .lang import POPULAR_LANGUAGES, language_display
+
+
+def _dbg(*a) -> None:
+    if debug_enabled():
+        print("[translato/popup]", *a, file=sys.stderr, flush=True)
+
+
 RESIZE_MARGIN = 6  # толщина невидимой рамки для хвата курсором
 TITLEBAR_H = 28    # высота зоны, за которую можно таскать окно
 
 
-class PopupWindow(QWidget):
-    _outside_click = Signal()
+class _LangPickerPopup(QWidget):
+    """Собственный dropdown-список языков как отдельное top-level окно.
 
-    def __init__(self, default_width: int = 320,
-                 cursor_offset_x: int = 16, cursor_offset_y: int = 16) -> None:
+    Стандартный QComboBox dropdown на Windows страдает от проблем со z-order
+    при родителе с WindowStaysOnTopHint: визуально виден, но клики по пунктам,
+    выходящим за пределы родительского окна, физически не доходят до Qt.
+    Собственное top-level Qt.Popup-окно с явно выставленными флагами
+    стабильно получает клики и корректно закрывается по outside-click."""
+
+    selected = Signal(str)  # emit(code)
+    closed = Signal()
+
+    def __init__(self, items: list[tuple[str, str]], parent: QWidget | None = None) -> None:
+        super().__init__(parent,
+                         Qt.WindowType.Popup
+                         | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowStaysOnTopHint
+                         | Qt.WindowType.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        self._pending_code: str | None = None
+        self._list = QListWidget(self)
+        self._list.setObjectName("langList")
+        self._list.setFrameShape(QFrame.Shape.NoFrame)
+        self._list.setUniformItemSizes(True)
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        for code, label in items:
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, code)
+            self._list.addItem(item)
+        self._list.itemClicked.connect(self._on_item_clicked)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._list)
+
+        self.setStyleSheet("""
+            QWidget {
+                background: #2c2e33;
+                border: 1px solid #45474d;
+            }
+            QListWidget#langList {
+                background: #2c2e33;
+                color: #e8e8e8;
+                outline: none;
+                padding: 2px 0;
+            }
+            QListWidget#langList::item {
+                padding: 4px 12px;
+            }
+            QListWidget#langList::item:selected,
+            QListWidget#langList::item:hover {
+                background: #3a7afe;
+                color: #ffffff;
+            }
+        """)
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        code = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(code, str):
+            self._pending_code = code
+        self.hide()
+
+    def show_at(self, global_pos: QPoint, min_width: int) -> None:
+        self._list.setMinimumWidth(min_width)
+        # Подгоним высоту: показать примерно 10 строк или всё, если меньше.
+        fm_h = self._list.sizeHintForRow(0) if self._list.count() > 0 else 20
+        count_to_show = min(self._list.count(), 10)
+        content_h = fm_h * count_to_show + 6
+        self.resize(max(min_width, self._list.sizeHint().width()), content_h)
+        screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
+        geo = screen.availableGeometry()
+        x = max(geo.left(), min(global_pos.x(), geo.right() - self.width()))
+        y = global_pos.y()
+        if y + self.height() > geo.bottom():
+            # Не помещается вниз — показываем вверх от якоря.
+            y = max(geo.top(), global_pos.y() - self.height())
+        self.move(x, y)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        super().hideEvent(event)
+        code = self._pending_code
+        self._pending_code = None
+        if code is not None:
+            self.selected.emit(code)
+        self.closed.emit()
+
+
+class _LangPicker(QToolButton):
+    """Кнопка-«комбобокс», открывающая собственный top-level popup-список.
+
+    Сигнализирует через dropdown_opened / dropdown_closed / value_changed."""
+
+    dropdown_opened = Signal()
+    dropdown_closed = Signal()
+    value_changed = Signal(str)
+
+    def __init__(self, items: list[tuple[str, str]], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._items = list(items)  # [(code, label)]
+        self._code_to_label = {code: label for code, label in items}
+        self._current: str = items[0][0] if items else ""
+        self.setAutoRaise(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.DelayedPopup)
+        self.clicked.connect(self._show_picker)
+        self._picker: _LangPickerPopup | None = None
+        self._refresh_text()
+
+    def _refresh_text(self) -> None:
+        self.setText(self._code_to_label.get(self._current, self._current) + "  ▾")
+
+    def set_value(self, code: str) -> None:
+        """Установить выбор извне, без эмита сигнала."""
+        if code == self._current or code not in self._code_to_label:
+            return
+        self._current = code
+        self._refresh_text()
+
+    def value(self) -> str:
+        return self._current
+
+    def _show_picker(self) -> None:
+        if self._picker is not None:
+            return
+        picker = _LangPickerPopup(self._items, parent=None)
+        picker.selected.connect(self._on_picker_selected)
+        picker.closed.connect(self._on_picker_closed)
+        self._picker = picker
+        self.dropdown_opened.emit()
+        anchor = self.mapToGlobal(QPoint(0, self.height()))
+        picker.show_at(anchor, min_width=self.width())
+
+    def _on_picker_selected(self, code: str) -> None:
+        if code == self._current:
+            return
+        self._current = code
+        self._refresh_text()
+        self.value_changed.emit(code)
+
+    def _on_picker_closed(self) -> None:
+        picker = self._picker
+        self._picker = None
+        self.dropdown_closed.emit()
+        if picker is not None:
+            picker.deleteLater()
+
+
+class PopupWindow(QWidget):
+    _outside_click = Signal(int, int)
+    dst_language_changed = Signal(str)
+    src_language_changed = Signal(str)
+
+    def __init__(self, default_width: int = 480, default_height: int = 320,
+                 cursor_offset_x: int = 16, cursor_offset_y: int = 16,
+                 preferred_dst: str = "en") -> None:
         super().__init__(None)
         self._default_width = default_width
+        self._default_height = default_height
         self._cursor_off = (cursor_offset_x, cursor_offset_y)
         self._current_translation = ""
         self._user_size: QSize | None = None  # None пока пользователь сам не ресайзил
+        self._preferred_dst = preferred_dst
+        self._preferred_src = "en"
 
         self.setWindowFlags(
             Qt.WindowType.Tool
@@ -41,7 +215,7 @@ class PopupWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMouseTracking(True)
-        self.setMinimumSize(220, 120)
+        self.setMinimumSize(280, 220)
 
         self._frame = QFrame(self)
         self._frame.setObjectName("popupFrame")
@@ -53,9 +227,21 @@ class PopupWindow(QWidget):
                 border-radius: 8px;
             }
             QLabel { color: #f0f0f0; }
-            QLabel#header { color: #9aa0a6; font-size: 11px; letter-spacing: 1px; }
-            QLabel#original { color: #8c9196; font-size: 12px; }
-            QLabel#translation { color: #ffffff; font-size: 15px; }
+            QLabel#arrow { color: #9aa0a6; font-size: 11px; }
+            QLabel#updating {
+                color: #9aa0a6;
+                font-size: 11px;
+                font-style: italic;
+                padding-left: 6px;
+            }
+            QPlainTextEdit#translation {
+                background: transparent;
+                color: #ffffff;
+                font-size: 15px;
+                border: none;
+                selection-background-color: #3a7afe;
+                selection-color: #ffffff;
+            }
             QPushButton {
                 background: #2c2e33; color: #e8e8e8;
                 border: 1px solid #45474d; border-radius: 4px;
@@ -63,8 +249,15 @@ class PopupWindow(QWidget):
             }
             QPushButton:hover { background: #3a3c42; }
             QPushButton:pressed { background: #24262a; }
-            QScrollArea { border: none; background: transparent; }
-            QScrollArea > QWidget > QWidget { background: transparent; }
+            QToolButton#langCombo {
+                background: transparent;
+                color: #c5c9cf;
+                border: none;
+                padding: 2px 6px;
+                font-size: 11px;
+                letter-spacing: 1px;
+            }
+            QToolButton#langCombo:hover { color: #ffffff; }
         """)
 
         outer = QVBoxLayout(self)
@@ -76,11 +269,39 @@ class PopupWindow(QWidget):
         root.setSpacing(6)
 
         header_row = QHBoxLayout()
-        self._header = QLabel("…")
-        self._header.setObjectName("header")
-        self._header.setCursor(Qt.CursorShape.IBeamCursor)
-        header_row.addWidget(self._header)
+        header_row.setSpacing(6)
+
+        lang_items = [(code, language_display(code, name)) for code, name in POPULAR_LANGUAGES]
+
+        self._src_combo = _LangPicker(lang_items)
+        self._src_combo.setObjectName("langCombo")
+        self._src_combo.setToolTip("Язык оригинала")
+        self._src_combo.set_value(self._preferred_src)
+        self._src_combo.value_changed.connect(self._on_src_lang_changed)
+        self._src_combo.dropdown_opened.connect(self._on_dropdown_open)
+        self._src_combo.dropdown_closed.connect(self._on_dropdown_close)
+        header_row.addWidget(self._src_combo)
+
+        self._arrow_label = QLabel("→")
+        self._arrow_label.setObjectName("arrow")
+        header_row.addWidget(self._arrow_label)
+
+        self._lang_combo = _LangPicker(lang_items)
+        self._lang_combo.setObjectName("langCombo")
+        self._lang_combo.setToolTip("Язык перевода")
+        self._lang_combo.set_value(self._preferred_dst)
+        self._lang_combo.value_changed.connect(self._on_lang_changed)
+        self._lang_combo.dropdown_opened.connect(self._on_dropdown_open)
+        self._lang_combo.dropdown_closed.connect(self._on_dropdown_close)
+        header_row.addWidget(self._lang_combo)
+
+        self._updating_label = QLabel("")
+        self._updating_label.setObjectName("updating")
+        self._updating_label.hide()
+        header_row.addWidget(self._updating_label)
+
         header_row.addStretch(1)
+
         self._copy_btn = QPushButton("Скопировать")
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -88,24 +309,20 @@ class PopupWindow(QWidget):
         header_row.addWidget(self._copy_btn)
         root.addLayout(header_row)
 
-        self._scroll = QScrollArea(self._frame)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        inner = QWidget()
-        inner_layout = QVBoxLayout(inner)
-        inner_layout.setContentsMargins(0, 0, 0, 0)
-        self._translation_label = QLabel("Переводится…")
-        self._translation_label.setObjectName("translation")
-        self._translation_label.setWordWrap(True)
-        self._translation_label.setTextFormat(Qt.TextFormat.PlainText)
-        self._translation_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self._translation_label.setCursor(Qt.CursorShape.IBeamCursor)
-        inner_layout.addWidget(self._translation_label)
-        inner_layout.addStretch(1)
-        self._scroll.setWidget(inner)
-        root.addWidget(self._scroll, 1)
+        self._translation_view = QPlainTextEdit(self._frame)
+        self._translation_view.setObjectName("translation")
+        self._translation_view.setReadOnly(True)
+        self._translation_view.setFrameShape(QFrame.Shape.NoFrame)
+        self._translation_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._translation_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._translation_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._translation_view.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self._translation_view.setCursor(Qt.CursorShape.IBeamCursor)
+        self._translation_view.setPlainText("Переводится…")
+        # Отступы внутри текстового поля — задаём чуть-чуть, чтобы текст
+        # не прилипал к краю скроллбара/рамки фрейма.
+        self._translation_view.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(self._translation_view, 1)
 
         bottom_row = QHBoxLayout()
         bottom_row.setContentsMargins(0, 0, 0, 0)
@@ -117,13 +334,10 @@ class PopupWindow(QWidget):
         root.addLayout(bottom_row)
 
         self._mouse_listener: pynput_mouse.Listener | None = None
+        self._dropdown_suppress_until: float = 0.0
         self._outside_click.connect(self._on_outside_click)
 
         self._streaming: bool = False
-        self._fit_timer = QTimer(self)
-        self._fit_timer.setSingleShot(True)
-        self._fit_timer.setInterval(60)
-        self._fit_timer.timeout.connect(self._fit_height_to_content)
 
         # Ручной resize по краям
         self._resize_edge: str | None = None
@@ -147,52 +361,102 @@ class PopupWindow(QWidget):
 
     # --- public API ---------------------------------------------------------
 
-    def show_loading(self, header: str) -> None:
-        self._header.setText(header)
+    def set_preferred_dst(self, code: str) -> None:
+        """Обновить выбранный язык в popup извне, без эмита сигнала."""
+        self._preferred_dst = code
+        self._lang_combo.set_value(code)
+
+    def _on_lang_changed(self, code: str) -> None:
+        _dbg(f"_on_lang_changed code={code}")
+        if code == self._preferred_dst:
+            return
+        self._preferred_dst = code
+        self.dst_language_changed.emit(code)
+
+    def _on_src_lang_changed(self, code: str) -> None:
+        _dbg(f"_on_src_lang_changed code={code}")
+        if code == self._preferred_src:
+            return
+        self._preferred_src = code
+        self.src_language_changed.emit(code)
+
+    def set_direction(self, src: str, dst: str) -> None:
+        """Обновить отображаемое направление без перезапуска анимации.
+
+        Синхронизирует оба combo (без эмита сигналов).
+        Текст перевода не трогает — его затрёт begin_translation/append_translation."""
+        self._src_combo.set_value(src)
+        self._lang_combo.set_value(dst)
+        self._preferred_src = src
+        self._preferred_dst = dst
+
+    def show_loading(self, src: str, dst: str) -> None:
+        self.set_direction(src, dst)
         self._current_translation = ""
         self._copy_btn.setEnabled(False)
-        self._translation_label.setText("Переводится…")
+        self._translation_view.setPlainText("Переводится…")
         self._reposition_and_show()
 
     def show_translation(self, translation: str) -> None:
         self._streaming = False
-        self._fit_timer.stop()
         self._current_translation = translation
-        self._translation_label.setText(translation)
+        self._translation_view.setPlainText(translation)
+        self._scroll_to_top()
         self._copy_btn.setEnabled(bool(translation))
-        self._fit_height_to_content()
 
     def begin_translation(self) -> None:
         """Начать накопление streaming-перевода. Чистит поле, ждёт первый delta."""
         self._streaming = True
         self._current_translation = ""
-        self._translation_label.setText("")
+        self._translation_view.setPlainText("")
         self._copy_btn.setEnabled(False)
 
+    def begin_soft_replace(self) -> None:
+        """Мягкий старт нового перевода: оставляем старый текст видимым,
+        чтобы не было мигания. Первый вызов append_translation затрёт его."""
+        self._streaming = True
+        self._current_translation = ""
+        self._copy_btn.setEnabled(False)
+        self._show_updating("Обновляется…")
+
     def append_translation(self, delta: str) -> None:
-        """Дописать очередной кусок перевода. Ресайз дебаунсится."""
+        """Дописать очередной кусок перевода."""
         if not delta:
             return
+        first_chunk = self._current_translation == ""
         self._streaming = True
         self._current_translation += delta
-        self._translation_label.setText(self._current_translation)
+        # При soft-replace первый чанк затирает старый текст.
+        self._translation_view.setPlainText(self._current_translation)
+        if first_chunk:
+            self._hide_updating()
+            self._scroll_to_top()
         self._copy_btn.setEnabled(True)
-        if not self._fit_timer.isActive():
-            self._fit_timer.start()
+
+    def _show_updating(self, text: str) -> None:
+        self._updating_label.setText(text)
+        self._updating_label.show()
+
+    def _hide_updating(self) -> None:
+        self._updating_label.hide()
+
+    def _scroll_to_top(self) -> None:
+        bar = self._translation_view.verticalScrollBar()
+        if bar is not None:
+            bar.setValue(0)
 
     def finish_translation(self) -> None:
-        """Сигнал, что стрим завершён: делаем финальный ресайз сразу."""
+        """Сигнал, что стрим завершён."""
         self._streaming = False
-        self._fit_timer.stop()
-        self._fit_height_to_content()
+        self._hide_updating()
 
     def show_error(self, message: str) -> None:
         self._streaming = False
-        self._fit_timer.stop()
+        self._hide_updating()
         self._current_translation = ""
         self._copy_btn.setEnabled(False)
-        self._translation_label.setText(message)
-        self._fit_height_to_content()
+        self._translation_view.setPlainText(message)
+        self._scroll_to_top()
 
     # --- internals ----------------------------------------------------------
 
@@ -200,7 +464,8 @@ class PopupWindow(QWidget):
         if self._user_size is not None:
             self.resize(self._user_size)
         else:
-            self.resize(self._default_width, max(140, self.minimumSizeHint().height()))
+            default_h = max(self._default_height, self.minimumSizeHint().height())
+            self.resize(self._default_width, default_h)
 
         cursor_pos = QCursor.pos()
         ox, oy = self._cursor_off
@@ -221,41 +486,6 @@ class PopupWindow(QWidget):
             self.raise_()
 
         self._start_outside_listener()
-
-    def _fit_height_to_content(self) -> None:
-        # Ширину не трогаем — её выбрал пользователь или дефолт.
-        width = self.width()
-
-        # Ширина, достающаяся тексту внутри scroll area.
-        # outer layout: по RESIZE_MARGIN слева/справа; root_layout: 12 + 12.
-        text_w = max(50, width - 2 * RESIZE_MARGIN - 24)
-
-        # Высота, нужная самому тексту при этой ширине (с учётом wordWrap).
-        self._translation_label.adjustSize()
-        text_h = self._translation_label.heightForWidth(text_w)
-        if text_h < 0:
-            text_h = self._translation_label.sizeHint().height()
-
-        # Высота остального «хрома» (заголовок-строка, кнопка, grip, отступы).
-        header_row_h = max(self._header.sizeHint().height(), self._copy_btn.sizeHint().height())
-        grip_row_h = self._grip.height() if hasattr(self, "_grip") else 16
-        root_margins = self._frame.layout().contentsMargins()
-        root_spacing = self._frame.layout().spacing()
-        chrome_h = (
-            2 * RESIZE_MARGIN                     # outer layout
-            + root_margins.top() + root_margins.bottom()
-            + header_row_h
-            + grip_row_h
-            + 2 * max(root_spacing, 0)            # 2 промежутка: header↔scroll, scroll↔grip
-            + 4                                   # небольшой запас на рамки/округления
-        )
-
-        content_h = text_h + chrome_h
-        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-        max_h = int(screen.availableGeometry().height() * 0.7)
-        new_h = max(self.minimumHeight(), min(content_h, max_h))
-        if new_h != self.height():
-            self.resize(width, new_h)
 
     def _copy_translation(self) -> None:
         if not self._current_translation:
@@ -355,10 +585,10 @@ class PopupWindow(QWidget):
         shape: Qt.CursorShape | None = None
         w = child
         while w is not None and w is not self:
-            if w is self._translation_label or w is self._header:
+            if w is self._translation_view or w is self._translation_view.viewport():
                 shape = Qt.CursorShape.IBeamCursor
                 break
-            if w is self._copy_btn:
+            if w is self._copy_btn or w is self._lang_combo or w is self._src_combo:
                 shape = Qt.CursorShape.PointingHandCursor
                 break
             w = w.parentWidget()
@@ -460,12 +690,65 @@ class PopupWindow(QWidget):
     def _on_global_click(self, x, y, button, pressed) -> None:
         if not pressed:
             return
+        now = _monotonic()
+        remaining = self._dropdown_suppress_until - now
+        popup_geo = self.frameGeometry()
+        _dbg(
+            f"pynput pressed at ({x},{y}) | suppress_remaining={remaining:.3f}s "
+            f"popup=[{popup_geo.x()},{popup_geo.y()} {popup_geo.width()}x{popup_geo.height()}]"
+        )
+        # Пока открыт dropdown комбобокса, — и короткое время после его
+        # закрытия — не трогаем popup. Иначе клик по пункту, выходящему за
+        # пределы popup-окна, воспринимается как outside-click, и popup
+        # закрывается раньше, чем Qt успевает применить выбор.
+        if remaining > 0:
+            _dbg("  → suppressed (dropdown cooldown)")
+            return
+        # pynput-колбэк из своего потока — Qt-проверки делаем в слоте.
+        self._outside_click.emit(int(x), int(y))
+
+    def _on_dropdown_open(self) -> None:
+        self._dropdown_suppress_until = _monotonic() + 30.0
+        _dbg(f"dropdown OPEN (suppress_until=+30s), stopping pynput listener")
+        # Полностью останавливаем pynput на время открытого dropdown. WH_MOUSE_LL
+        # hook может искажать/задерживать клик-сообщения Windows так, что
+        # контейнер dropdown их не получает.
+        self._stop_outside_listener()
+
+    def _on_dropdown_close(self) -> None:
+        self._dropdown_suppress_until = _monotonic() + 0.35
+        _dbg(f"dropdown CLOSE (suppress_until=+0.35s), restarting pynput")
+        # Возвращаем pynput обратно. Короткая задержка нужна, чтобы Qt успел
+        # обработать click-inside-dropdown без вмешательства хука.
+        QTimer.singleShot(300, self._start_outside_listener)
+
+    def _on_outside_click(self, x: int, y: int) -> None:
+        _dbg(f"_on_outside_click slot fired at ({x},{y}) visible={self.isVisible()}")
         if not self.isVisible():
             return
-        if not self.frameGeometry().contains(QPoint(int(x), int(y))):
-            self._outside_click.emit()
-
-    def _on_outside_click(self) -> None:
+        pt = QPoint(x, y)
+        if self.frameGeometry().contains(pt):
+            _dbg("  inside frameGeometry → ignore")
+            return
+        active_popup = QApplication.activePopupWidget()
+        _dbg(f"  activePopupWidget={active_popup}")
+        if active_popup is not None and active_popup is not self:
+            try:
+                if active_popup.geometry().contains(pt):
+                    _dbg("  click inside active popup → ignore")
+                    return
+            except Exception:
+                pass
+        w_at = QApplication.widgetAt(pt)
+        _dbg(f"  widgetAt={w_at}")
+        if w_at is not None:
+            top = w_at.window()
+            if top is not None and top is not self:
+                flags = top.windowFlags()
+                if flags & Qt.WindowType.Popup:
+                    _dbg("  widgetAt top is Popup → ignore")
+                    return
+        _dbg("  → HIDING popup")
         self.hide()
 
     def hideEvent(self, event) -> None:  # noqa: N802
