@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from threading import Lock
 from typing import Iterator
 
 from ..i18n import t
@@ -28,6 +29,22 @@ class OpenRouterTranslator:
         self.custom_prompt = custom_prompt
         self._client = None
         self._client_key: str | None = None
+        self._active_stream = None
+        self._active_stream_lock = Lock()
+
+    def cancel_active_stream(self) -> None:
+        """Закрыть текущий активный HTTP-стрим, если он есть.
+        Вызывается из UI-потока когда приходит новый триггер перевода —
+        старый запрос надо оборвать, чтобы не тратить токены и поток пула."""
+        with self._active_stream_lock:
+            stream = self._active_stream
+            self._active_stream = None
+        if stream is None:
+            return
+        try:
+            stream.close()
+        except Exception:
+            pass
 
     def _get_client(self, api_key: str):
         try:
@@ -36,9 +53,28 @@ class OpenRouterTranslator:
             raise TranslationError(t("err.openai_pkg_missing", e=e))
 
         if self._client is None or self._client_key != api_key:
+            self._close_client()
             self._client = OpenAI(api_key=api_key, base_url=self.base_url)
             self._client_key = api_key
         return self._client
+
+    def _close_client(self) -> None:
+        """Закрыть httpx-пул текущего клиента. Без этого при смене ключа/URL
+        старый OpenAI-клиент остаётся висеть с открытыми keep-alive соединениями
+        до GC."""
+        client = self._client
+        if client is None:
+            return
+        self._client = None
+        self._client_key = None
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        """Явное освобождение ресурсов. Вызывается из app при смене модели/URL."""
+        self._close_client()
 
     def translate_stream(self, text: str, src: str, dst: str) -> Iterator[str]:
         api_key = get_openrouter_key()
@@ -77,13 +113,27 @@ class OpenRouterTranslator:
                     {"role": "user", "content": wrapped_user},
                 ],
             )
-            for chunk in stream:
+            with self._active_stream_lock:
+                self._active_stream = stream
+            try:
+                for chunk in stream:
+                    try:
+                        delta = chunk.choices[0].delta.content
+                    except (AttributeError, IndexError, TypeError):
+                        continue
+                    if delta:
+                        yield delta
+            finally:
+                # Закрываем соединение независимо от того, как вышли из цикла:
+                # нормально, через исключение или через cancel_active_stream()
+                # из другого потока.
+                with self._active_stream_lock:
+                    if self._active_stream is stream:
+                        self._active_stream = None
                 try:
-                    delta = chunk.choices[0].delta.content
-                except (AttributeError, IndexError, TypeError):
-                    continue
-                if delta:
-                    yield delta
+                    stream.close()
+                except Exception:
+                    pass
 
         try:
             yield from stream_postprocess(_raw(), source_len=len(text))

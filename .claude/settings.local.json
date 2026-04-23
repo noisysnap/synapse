@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-Process | Where-Object { $_.ProcessName -match 'Synapse|python' } | Select-Object Id, ProcessName, Path | Format-Table -AutoSize)"
+    ]
+  }
+}

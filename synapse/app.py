@@ -3,8 +3,22 @@ from __future__ import annotations
 import sys
 
 import pyperclip
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+
+# Уникальный AppUserModelID — без него Windows группирует окно с процессом-хостом
+# (python.exe / pythonw.exe) и берёт его иконку для taskbar.
+_APP_USER_MODEL_ID = "noisysnap.synapse.translator.1"
+
+
+def _set_app_user_model_id() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(_APP_USER_MODEL_ID)
+    except Exception:
+        pass
 
 from . import autostart
 from .config import load_config, save_config
@@ -172,8 +186,12 @@ class SynapseApp(QObject):
         if (self._cfg["openrouter"]["model"] != prev_or_model
                 or self._cfg["openrouter"]["base_url"] != prev_or_url
                 or prompt_changed):
+            if self._openrouter is not None:
+                self._openrouter.close()
             self._openrouter = None
         if self._cfg["anthropic"]["model"] != prev_an_model or prompt_changed:
+            if self._anthropic is not None:
+                self._anthropic.close()
             self._anthropic = None
 
     def _get_translator(self):
@@ -281,6 +299,11 @@ class SynapseApp(QObject):
             else:
                 self._popup.show_loading(src, dst)
 
+        # Обрываем текущий стрим на обоих провайдерах: старый запрос
+        # бесполезен, его сигналы всё равно отфильтруются по request_id,
+        # но HTTP и поток QThreadPool висели бы до исчерпания токенов.
+        self._cancel_active_streams()
+
         self._request_counter += 1
         request_id = self._request_counter
         self._soft_by_request[request_id] = soft
@@ -289,6 +312,12 @@ class SynapseApp(QObject):
         translator = self._get_translator()
         job = TranslationJob(translator, text, src, dst, request_id, self._signals)
         self._pool.start(job)
+
+    def _cancel_active_streams(self) -> None:
+        if self._openrouter is not None:
+            self._openrouter.cancel_active_stream()
+        if self._anthropic is not None:
+            self._anthropic.cancel_active_stream()
 
     def _dispatch_target(self, request_id: int) -> str:
         return self._target_by_request.get(request_id, "popup")
@@ -408,6 +437,13 @@ class SynapseApp(QObject):
             self._trigger.stop()
         except Exception:
             pass
+        self._cancel_active_streams()
+        if self._openrouter is not None:
+            self._openrouter.close()
+            self._openrouter = None
+        if self._anthropic is not None:
+            self._anthropic.close()
+            self._anthropic = None
         self._popup.hide()
         if self._editor is not None:
             self._editor.close()
@@ -421,6 +457,7 @@ def _ensure_api_key_on_startup(app: "SynapseApp") -> None:
 
 
 def main() -> int:
+    _set_app_user_model_id()
     qapp = QApplication.instance() or QApplication(sys.argv)
     qapp.setQuitOnLastWindowClosed(False)
     qapp.setApplicationName("synapse")
@@ -435,7 +472,10 @@ def main() -> int:
     autostart.self_heal()
 
     app = SynapseApp(qapp)
-    _ensure_api_key_on_startup(app)
+    # Диалог настроек показываем после старта event loop. Если вызвать
+    # напрямую, dlg.exec() запустит вложенный loop ещё до qapp.exec(), и
+    # трей может не успеть инициализироваться.
+    QTimer.singleShot(0, lambda: _ensure_api_key_on_startup(app))
 
     return qapp.exec()
 

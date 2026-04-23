@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -61,15 +63,37 @@ def load_config() -> dict[str, Any]:
             with path.open("r", encoding="utf-8") as f:
                 user_cfg = json.load(f)
             return _deep_merge(DEFAULT_CONFIG, user_cfg)
-        except (OSError, json.JSONDecodeError):
+        except json.JSONDecodeError:
+            # Битый JSON — сохраняем как .bak, чтобы следующий save не
+            # затёр содержимое пользовательских настроек безвозвратно.
+            try:
+                backup = path.with_suffix(path.suffix + ".bak")
+                path.replace(backup)
+            except OSError:
+                pass
+        except OSError:
             pass
-    return json.loads(json.dumps(DEFAULT_CONFIG))
+    return copy.deepcopy(DEFAULT_CONFIG)
 
 
 def save_config(cfg: dict[str, Any]) -> None:
+    # Атомарная запись: пишем во временный файл в той же папке, потом
+    # os.replace. Так падение посреди записи не обрезает config.json.
     path = config_path()
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def debug_enabled() -> bool:

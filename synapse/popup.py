@@ -819,11 +819,22 @@ class PopupWindow(QWidget):
         self._stop_outside_listener()
 
     def _on_dropdown_close(self) -> None:
-        self._dropdown_suppress_until = _monotonic() + 0.35
-        _dbg(f"dropdown CLOSE (suppress_until=+0.35s), restarting pynput")
+        # Suppress окно совпадает с задержкой рестарта listener — иначе
+        # между рестартом и снятием suppress остаётся щель.
+        self._dropdown_suppress_until = _monotonic() + 0.30
+        _dbg(f"dropdown CLOSE (suppress_until=+0.30s), restarting pynput")
         # Возвращаем pynput обратно. Короткая задержка нужна, чтобы Qt успел
         # обработать click-inside-dropdown без вмешательства хука.
-        QTimer.singleShot(300, self._start_outside_listener)
+        QTimer.singleShot(300, self._restart_outside_listener_if_visible)
+
+    def _restart_outside_listener_if_visible(self) -> None:
+        # Popup мог скрыться за 300мс между dropdown CLOSE и рестартом.
+        # Тогда запускать listener бессмысленно — он останется жить до
+        # следующего hide/close. Рестартуем только если окно всё ещё видно.
+        if not self.isVisible():
+            _dbg("restart listener skipped — popup hidden")
+            return
+        self._start_outside_listener()
 
     def _on_outside_click(self, x: int, y: int) -> None:
         _dbg(f"_on_outside_click slot fired at ({x},{y}) visible={self.isVisible()}")

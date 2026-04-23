@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from threading import Lock
 from typing import Iterator
 
 from ..i18n import t
@@ -18,6 +19,22 @@ class AnthropicTranslator:
         self.custom_prompt = custom_prompt
         self._client = None
         self._client_key: str | None = None
+        self._active_stream = None
+        self._active_stream_lock = Lock()
+
+    def cancel_active_stream(self) -> None:
+        """Закрыть текущий активный HTTP-стрим, если он есть.
+        Вызывается из UI-потока когда приходит новый триггер перевода —
+        старый запрос надо оборвать, чтобы не тратить токены и поток пула."""
+        with self._active_stream_lock:
+            stream = self._active_stream
+            self._active_stream = None
+        if stream is None:
+            return
+        try:
+            stream.close()
+        except Exception:
+            pass
 
     def _get_client(self, api_key: str):
         try:
@@ -26,9 +43,27 @@ class AnthropicTranslator:
             raise TranslationError(t("err.anthropic_pkg_missing", e=e))
 
         if self._client is None or self._client_key != api_key:
+            self._close_client()
             self._client = Anthropic(api_key=api_key)
             self._client_key = api_key
         return self._client
+
+    def _close_client(self) -> None:
+        """Закрыть httpx-пул текущего клиента. Без этого при смене ключа/модели
+        старый Anthropic-клиент висит с keep-alive соединениями до GC."""
+        client = self._client
+        if client is None:
+            return
+        self._client = None
+        self._client_key = None
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        """Явное освобождение ресурсов. Вызывается из app при смене модели."""
+        self._close_client()
 
     def translate_stream(self, text: str, src: str, dst: str) -> Iterator[str]:
         api_key = get_anthropic_key()
@@ -65,9 +100,19 @@ class AnthropicTranslator:
                 system=system_prompt,
                 messages=[{"role": "user", "content": wrapped_user}],
             ) as stream:
-                for delta in stream.text_stream:
-                    if delta:
-                        yield delta
+                with self._active_stream_lock:
+                    self._active_stream = stream
+                try:
+                    for delta in stream.text_stream:
+                        if delta:
+                            yield delta
+                finally:
+                    # Снимаем регистрацию на случай, если cancel прилетит
+                    # после нормального завершения (иначе в лок попадёт
+                    # уже закрытый __exit__-ом стрим).
+                    with self._active_stream_lock:
+                        if self._active_stream is stream:
+                            self._active_stream = None
 
         try:
             yield from stream_postprocess(_raw(), source_len=len(text))
