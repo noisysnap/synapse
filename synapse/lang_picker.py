@@ -13,13 +13,13 @@ from PySide6.QtWidgets import (
 
 
 class _LangPickerPopup(QWidget):
-    """Собственный dropdown-список языков как отдельное top-level окно.
+    """Custom language dropdown list rendered as a separate top-level window.
 
-    Стандартный QComboBox dropdown на Windows страдает от проблем со z-order
-    при родителе с WindowStaysOnTopHint: визуально виден, но клики по пунктам,
-    выходящим за пределы родительского окна, физически не доходят до Qt.
-    Собственное top-level Qt.Popup-окно с явно выставленными флагами
-    стабильно получает клики и корректно закрывается по outside-click."""
+    The standard QComboBox dropdown on Windows suffers from z-order issues
+    when its parent has WindowStaysOnTopHint: it is visible, but clicks on
+    items extending past the parent window do not reach Qt. A dedicated
+    top-level Qt.Popup window with explicit flags receives clicks reliably
+    and closes correctly on outside-click."""
 
     selected = Signal(str)  # emit(code)
     closed = Signal()
@@ -103,9 +103,9 @@ class _LangPickerPopup(QWidget):
 
 
 class LangPicker(QToolButton):
-    """Кнопка-«комбобокс», открывающая собственный top-level popup-список.
+    """A combobox-style button that opens its own top-level popup list.
 
-    Сигнализирует через dropdown_opened / dropdown_closed / value_changed."""
+    Emits dropdown_opened / dropdown_closed / value_changed."""
 
     dropdown_opened = Signal()
     dropdown_closed = Signal()
@@ -128,7 +128,7 @@ class LangPicker(QToolButton):
         self.setText(self._code_to_label.get(self._current, self._current) + "  ▾")
 
     def set_value(self, code: str) -> None:
-        """Установить выбор извне, без эмита сигнала."""
+        """Set the current selection from outside without emitting a signal."""
         if code == self._current or code not in self._code_to_label:
             return
         self._current = code

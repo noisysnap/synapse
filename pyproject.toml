@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synapse-translator"
+version = "0.1.0"
+description = "Tray-based hotkey translator for Windows with streaming Claude responses."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "noisysnap" }]
+keywords = ["translator", "windows", "tray", "anthropic", "openrouter", "claude"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "PySide6>=6.6,<7",
+    "pynput>=1.7,<2",
+    "pyperclip>=1.8,<2",
+    "openai>=1.40,<2",
+    "anthropic>=0.39,<1",
+    "keyring>=24,<26",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0"]
+
+[project.scripts]
+synapse-setup-key = "synapse.setup_key:main"
+
+[project.gui-scripts]
+synapse = "synapse.app:main"
+
+[project.urls]
+Homepage = "https://github.com/noisysnap/synapse"
+Issues = "https://github.com/noisysnap/synapse/issues"
+
+[tool.setuptools]
+packages = ["synapse", "synapse.providers"]
+
+[tool.setuptools.package-data]
+synapse = ["assets/*.ico"]

@@ -16,7 +16,7 @@ from .keys import (
     delete_openrouter_key,
 )
 
-# Совместимость со старым импортом из setup_key.py и tray.py.
+# Backwards-compatible aliases for older imports in setup_key.py and tray.py.
 get_api_key = get_openrouter_key
 set_api_key = set_openrouter_key
 delete_api_key = delete_openrouter_key
@@ -33,9 +33,10 @@ class OpenRouterTranslator:
         self._active_stream_lock = Lock()
 
     def cancel_active_stream(self) -> None:
-        """Закрыть текущий активный HTTP-стрим, если он есть.
-        Вызывается из UI-потока когда приходит новый триггер перевода —
-        старый запрос надо оборвать, чтобы не тратить токены и поток пула."""
+        """Close the active HTTP stream, if any.
+        Called from the UI thread when a new translation trigger arrives —
+        the old request must be aborted so it does not burn tokens or hog
+        a thread-pool slot."""
         with self._active_stream_lock:
             stream = self._active_stream
             self._active_stream = None
@@ -59,9 +60,9 @@ class OpenRouterTranslator:
         return self._client
 
     def _close_client(self) -> None:
-        """Закрыть httpx-пул текущего клиента. Без этого при смене ключа/URL
-        старый OpenAI-клиент остаётся висеть с открытыми keep-alive соединениями
-        до GC."""
+        """Close the current client's httpx pool. Without this, swapping
+        the key or URL leaves the old OpenAI client around with open
+        keep-alive connections until GC."""
         client = self._client
         if client is None:
             return
@@ -73,7 +74,7 @@ class OpenRouterTranslator:
             pass
 
     def close(self) -> None:
-        """Явное освобождение ресурсов. Вызывается из app при смене модели/URL."""
+        """Explicit resource release. Called from app on model/URL change."""
         self._close_client()
 
     def translate_stream(self, text: str, src: str, dst: str) -> Iterator[str]:
@@ -124,9 +125,9 @@ class OpenRouterTranslator:
                     if delta:
                         yield delta
             finally:
-                # Закрываем соединение независимо от того, как вышли из цикла:
-                # нормально, через исключение или через cancel_active_stream()
-                # из другого потока.
+                # Close the connection regardless of how we exited the loop:
+                # normally, through an exception, or via cancel_active_stream()
+                # from another thread.
                 with self._active_stream_lock:
                     if self._active_stream is stream:
                         self._active_stream = None

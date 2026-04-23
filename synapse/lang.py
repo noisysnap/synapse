@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import re
 
-# Популярные языки перевода. Первый — английский (дефолт).
-# Вьетнамский присутствует по явному требованию.
+# Popular translation languages. English is first (default).
 POPULAR_LANGUAGES: list[tuple[str, str]] = [
     ("en", "English"),
     ("ru", "Русский"),
@@ -30,9 +29,9 @@ POPULAR_LANGUAGES: list[tuple[str, str]] = [
 
 LANGUAGE_CODES: set[str] = {code for code, _ in POPULAR_LANGUAGES}
 
-# Человеко-понятные короткие метки для показа в скобках. Там, где ISO-код языка
-# расходится с привычным обозначением по стране/письменности, используем
-# более узнаваемый вариант (JP вместо JA, KR вместо KO, CN вместо ZH, UA вместо UK).
+# Human-friendly short labels shown in parentheses. Where the ISO language
+# code differs from the conventional country/script abbreviation, we use the
+# more familiar variant (JP for JA, KR for KO, CN for ZH, UA for UK).
 SHORT_CODE_OVERRIDES: dict[str, str] = {
     "ja": "JP",
     "ko": "KR",
@@ -52,92 +51,92 @@ def language_display(code: str, name: str) -> str:
     return f"{name} ({short_code(code)})"
 
 
-_CYRILLIC = "cyr"  # внутренний маркер, уточняется через _cyrillic_hint
+_CYRILLIC = "cyr"  # internal marker, refined further by _cyrillic_hint
 
 
-# Уникальные буквы украинского, которых нет в русском.
+# Letters unique to Ukrainian (absent in Russian).
 _UK_LETTERS = set("іїєґІЇЄҐ")
-# Уникальные буквы русского, которых нет в украинском.
+# Letters unique to Russian (absent in Ukrainian).
 _RU_LETTERS = set("ыъэёЫЪЭЁ")
 
 
 def _script_of(ch: str) -> str | None:
-    """Вернуть код языка по Unicode-блоку одиночного символа, если он
-    однозначно ассоциируется с языком. Для латиницы возвращает None —
-    различить, скажем, English и French по буквам без словаря нельзя.
+    """Return the language code for a single character based on its Unicode
+    block, if it maps unambiguously to a language. For Latin letters returns
+    None — without a dictionary you cannot tell, say, English from French by
+    individual letters.
 
-    Для кириллицы возвращает маркер _CYRILLIC — разделение ru/uk делается
-    отдельно в _cyrillic_hint по уникальным буквам каждого алфавита."""
+    For Cyrillic, returns the _CYRILLIC marker — splitting ru/uk happens
+    separately in _cyrillic_hint via alphabet-specific letters."""
     cp = ord(ch)
-    # Кириллица: основной блок + доп. расширения (в т.ч. украинские буквы).
+    # Cyrillic: main block + supplementary extensions (incl. Ukrainian letters).
     if 0x0400 <= cp <= 0x04FF or 0x0500 <= cp <= 0x052F:
         return _CYRILLIC
-    # Хирагана + катакана → гарантированно японский.
+    # Hiragana + Katakana → unambiguously Japanese.
     if 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF:
         return "ja"
-    # Хангыль.
+    # Hangul.
     if (0xAC00 <= cp <= 0xD7AF) or (0x1100 <= cp <= 0x11FF) or (0x3130 <= cp <= 0x318F):
         return "ko"
-    # CJK-иероглифы — отдаём китайскому (для чисто иероглифического текста
-    # отличить японский от китайского без словаря нельзя).
+    # CJK ideographs — assigned to Chinese (for purely ideographic text you
+    # cannot distinguish Japanese from Chinese without a dictionary).
     if 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF:
         return "zh"
-    # Арабский: основной блок, дополнение, Extended-A, Presentation Forms A/B.
+    # Arabic: main block, supplement, Extended-A, Presentation Forms A/B.
     if (0x0600 <= cp <= 0x06FF or 0x0750 <= cp <= 0x077F
             or 0x08A0 <= cp <= 0x08FF
             or 0xFB50 <= cp <= 0xFDFF or 0xFE70 <= cp <= 0xFEFF):
         return "ar"
-    # Тайский.
+    # Thai.
     if 0x0E00 <= cp <= 0x0E7F:
         return "th"
-    # Деванагари (хинди).
+    # Devanagari (Hindi).
     if 0x0900 <= cp <= 0x097F:
         return "hi"
     return None
 
 
 def _cyrillic_hint(text: str) -> str:
-    """Разделить ru и uk по уникальным буквам и стоп-словам.
+    """Split ru vs uk by unique letters and stop-words.
 
-    Украинский имеет і/ї/є/ґ (отсутствуют в русском), русский — ы/ъ/э/ё
-    (отсутствуют в украинском). Если букв-маркеров нет (короткий текст,
-    совпадающий с обоими алфавитами), пробуем матч по стоп-словам; иначе
-    дефолтимся в ru."""
+    Ukrainian has і/ї/є/ґ (absent in Russian); Russian has ы/ъ/э/ё (absent
+    in Ukrainian). If neither marker is present (short text using only
+    shared letters), try stop-words; otherwise default to ru."""
     has_uk = any(ch in _UK_LETTERS for ch in text)
     has_ru = any(ch in _RU_LETTERS for ch in text)
     if has_uk and not has_ru:
         return "uk"
     if has_ru and not has_uk:
         return "ru"
-    # Нет явных маркеров (например, чисто общие буквы или очень короткий
-    # текст) — пробуем стоп-слова.
+    # No clear markers (e.g. only shared letters or very short text) — try
+    # stop-words.
     hint = _stopword_hint(text, allowed={"ru", "uk"})
     return hint or "ru"
 
 
-# Характерные диакритические буквы по языкам. В отличие от unique-наборов
-# буквы здесь могут пересекаться между языками (например, ü есть и в de, и в
-# tr, и в sv) — финальный выбор делает score-агрегация в _latin_hint с учётом
-# стоп-слов. Включать сюда нужно только буквы, которые реально поднимают
-# сигнал именно для этого языка.
+# Characteristic diacritic letters by language. Unlike the unique sets,
+# letters here can be shared between languages (e.g. ü appears in de, tr,
+# and sv) — the final pick is the score aggregation in _latin_hint, which
+# also considers stop-words. Only include letters that genuinely boost the
+# signal for that specific language.
 #
-# Вьетнамский отдельно — у него блок Latin Extended Additional (U+1E00–U+1EFF),
-# в котором буквы не встречаются ни в одном другом популярном языке.
-_VI_UNIQUE = set("ơƠưƯđĐ")  # ă/ê/ô/â есть в других языках (ro, pt, fr), убраны
+# Vietnamese is special — its Latin Extended Additional block
+# (U+1E00–U+1EFF) contains letters not found in any other popular language.
+_VI_UNIQUE = set("ơƠưƯđĐ")  # ă/ê/ô/â also appear in ro/pt/fr — excluded
 _DIACRITIC_MARKERS: dict[str, set[str]] = {
-    "pl": set("łŁąĄęĘśŚćĆńŃźŹżŻ"),  # только польские — в других не встречаются
-    "cs": set("řŘůŮěĚ"),              # чисто чешские
-    "tr": set("ğĞıİçÇşŞ"),            # ğ/ı уникальны, ç/ş shared с pt/ro
-    "de": set("ßẞäÄöÖüÜ"),            # ß уникальна, ä/ö/ü shared с tr/sv/hu
-    "es": set("ñÑ¿¡áÁíÍóÓúÚéÉ"),      # ñ/¿/¡ уникальны, остальные shared
+    "pl": set("łŁąĄęĘśŚćĆńŃźŹżŻ"),  # Polish-only — not present elsewhere
+    "cs": set("řŘůŮěĚ"),              # Czech-only
+    "tr": set("ğĞıİçÇşŞ"),            # ğ/ı unique; ç/ş shared with pt/ro
+    "de": set("ßẞäÄöÖüÜ"),            # ß unique; ä/ö/ü shared with tr/sv/hu
+    "es": set("ñÑ¿¡áÁíÍóÓúÚéÉ"),      # ñ/¿/¡ unique; rest shared
     "fr": set("çÇàÀâÂéÉèÈêÊëËîÎïÏôÔùÙûÛüÜÿŸœŒæÆ"),
     "it": set("àÀèÈéÉìÌíÍîÎòÒóÓùÙ"),
     "pt": set("ãÃõÕáÁâÂéÉêÊíÍóÓôÔúÚçÇ"),
-    "nl": set("ëËïÏ"),                # диерезисы заметный сигнал для nl
-    "sv": set("åÅäÄöÖ"),              # å уникальна, ä/ö shared с de
+    "nl": set("ëËïÏ"),                # diaereses are a notable signal for nl
+    "sv": set("åÅäÄöÖ"),              # å unique; ä/ö shared with de
 }
-# Буквы, которые по-настоящему уникальны для одного языка среди популярных.
-# Хоть одна встретилась — сразу решаем.
+# Letters truly unique to one language among the popular ones. A single
+# match is enough to decide.
 _DIACRITIC_EXCLUSIVE: dict[str, set[str]] = {
     "vi": _VI_UNIQUE,
     "pl": set("łŁąĄęĘśŚćĆńŃźŹżŻ"),
@@ -146,15 +145,15 @@ _DIACRITIC_EXCLUSIVE: dict[str, set[str]] = {
     "de": set("ßẞ"),
     "es": set("ñÑ¿¡"),
     "sv": set("åÅ"),
-    "pt": set("ãÃõÕ"),                # носовые тильды характерны для pt
+    "pt": set("ãÃõÕ"),                # nasal tildes are characteristic of pt
     "fr": set("œŒæÆùÙÿŸ"),
 }
 
 
-# Частотные стоп-слова по языкам. Отобраны так, чтобы минимально пересекаться
-# между языками — совпадение даже одного-двух слов даёт сильный сигнал.
-# Используется для текстов без уникальной диакритики (например, чистый ASCII
-# или пары слов вроде "the house" vs "la casa").
+# Frequent stop-words by language. Chosen to overlap minimally between
+# languages — even one or two matches give a strong signal. Used for text
+# without unique diacritics (e.g. plain ASCII, or pairs like "the house"
+# vs "la casa").
 _STOPWORDS: dict[str, frozenset[str]] = {
     "en": frozenset({
         "the", "and", "is", "are", "was", "were", "have", "has", "had",
@@ -227,8 +226,8 @@ _STOPWORDS: dict[str, frozenset[str]] = {
         "những", "này", "đó", "các", "để", "trong", "người", "một", "tôi",
         "bạn", "anh", "chị", "nhưng",
     }),
-    # Русский и украинский добавлены только для fallback в _cyrillic_hint,
-    # когда в тексте нет уникальных букв ни того, ни другого алфавита.
+    # Russian and Ukrainian are included only as a fallback for
+    # _cyrillic_hint when neither alphabet's unique letters appear.
     "ru": frozenset({
         "и", "в", "не", "на", "что", "с", "по", "это", "как", "а", "но",
         "он", "она", "они", "его", "её", "их", "был", "была", "было", "были",
@@ -245,8 +244,9 @@ _STOPWORDS: dict[str, frozenset[str]] = {
 
 _WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
 
-# Языки с латиницей для фильтра в _latin_hint, чтобы не сматчить случайно
-# кириллические стоп-слова (они в _STOPWORDS ради fallback-а в _cyrillic_hint).
+# Latin-script languages used as a filter in _latin_hint so we do not
+# accidentally match Cyrillic stop-words (they live in _STOPWORDS for the
+# _cyrillic_hint fallback).
 _LATIN_STOPWORD_LANGS = frozenset({
     "en", "es", "fr", "de", "it", "pt", "nl", "sv", "pl", "cs", "tr", "id", "vi",
 })
@@ -257,13 +257,13 @@ def _stopword_hint(
     min_letters: int = 4,
     allowed: set[str] | frozenset[str] | None = None,
 ) -> str | None:
-    """Посчитать попадания стоп-слов и выбрать язык-лидер.
+    """Count stop-word hits and pick the leading language.
 
-    Возвращает код языка, если нашёлся явный лидер (минимум 2 попадания
-    или значимый отрыв), иначе None. min_letters — минимум букв в тексте,
-    чтобы вообще запускать подсчёт (на очень коротких строках результат
-    ненадёжен). allowed — если задан, подсчёт ограничивается этими языками
-    (используется, чтобы разделять только ru/uk внутри кириллицы и т.п.)."""
+    Returns the language code when there is a clear leader (at least 2 hits
+    or a meaningful gap), otherwise None. min_letters is the minimum letter
+    count needed before running the count (the result is unreliable on very
+    short strings). allowed, if set, restricts the count to those languages
+    (used, e.g., to separate only ru/uk within Cyrillic)."""
     words = [w.lower() for w in _WORD_RE.findall(text)]
     if len(words) < 2:
         return None
@@ -281,8 +281,8 @@ def _stopword_hint(
     if not scores:
         return None
     best_lang, best_score = max(scores.items(), key=lambda kv: kv[1])
-    # Требуем либо ≥2 попаданий (уверенный сигнал), либо отрыва от второго
-    # места — иначе одиночное слово вроде "de" матчит сразу pt/es/nl.
+    # Require either ≥2 hits (a confident signal) or a gap over the runner-up,
+    # otherwise a single word like "de" matches pt/es/nl all at once.
     if best_score >= 2:
         return best_lang
     second = max((s for lang, s in scores.items() if lang != best_lang),
@@ -293,22 +293,22 @@ def _stopword_hint(
 
 
 def _latin_hint(text: str) -> str | None:
-    """Определить латиноалфавитный язык по диакритикам и стоп-словам.
+    """Detect a Latin-script language by diacritics and stop-words.
 
-    Сначала проверяем эксклюзивные диакритики — если нашлась буква, которая
-    встречается только в одном языке, этого достаточно. Иначе складываем
-    очки от shared-диакритик и попаданий по стоп-словам и выбираем лидера."""
-    # 1) Эксклюзивные маркеры: любая буква из Latin Extended Additional — vi.
+    First we check exclusive diacritics — if any letter unique to a single
+    language is present, that is enough. Otherwise we sum scores from shared
+    diacritics and stop-word hits, and pick the leader."""
+    # 1) Exclusive markers: any letter from Latin Extended Additional → vi.
     for ch in text:
         if 0x1E00 <= ord(ch) <= 0x1EFF:
             return "vi"
-    # Прочие эксклюзивные диакритики (ł → pl, ř → cs, ğ → tr, ß → de, ñ → es,
+    # Other exclusive diacritics (ł → pl, ř → cs, ğ → tr, ß → de, ñ → es,
     # å → sv, ã/õ → pt, œ/æ → fr, ơ/ư/đ → vi).
     for ch in text:
         for lang, chars in _DIACRITIC_EXCLUSIVE.items():
             if ch in chars:
                 return lang
-    # 2) Score-based: shared-диакритики + стоп-слова.
+    # 2) Score-based: shared diacritics + stop-words.
     scores: dict[str, int] = {}
     for ch in text:
         for lang, chars in _DIACRITIC_MARKERS.items():
@@ -323,9 +323,9 @@ def _latin_hint(text: str) -> str | None:
                 continue
             hits = len(word_set & stops)
             if hits:
-                # Стоп-слово весит больше диакритики: диакритик много в
-                # каждом слове, а попадание в стоп-лист — более редкий и
-                # более специфичный сигнал.
+                # A stop-word weighs more than a diacritic: diacritics
+                # appear in many words, while landing in the stop-list is a
+                # rarer and more specific signal.
                 scores[lang] = scores.get(lang, 0) + hits * 3
     if not scores:
         return None
@@ -336,13 +336,13 @@ def _latin_hint(text: str) -> str | None:
 
 
 def detect_source(text: str) -> str:
-    """Определить язык оригинала по скриптам Юникода.
+    """Detect the source language from Unicode scripts.
 
-    Для языков с уникальной письменностью (ja/ko/zh/ar/th/hi) возвращает
-    конкретный код. Кириллицу разрешает в ru/uk по маркерным буквам и стоп-
-    словам. Для латиницы пытается распознать по характерным диакритикам
-    (vi/pl/cs/tr/de/es) и частотным стоп-словам (en/fr/it/pt/nl/sv/id) —
-    иначе отдаёт 'en'. Пользователь всегда может исправить через src-combo."""
+    Languages with unique scripts (ja/ko/zh/ar/th/hi) get a direct code.
+    Cyrillic is resolved into ru/uk by marker letters and stop-words. For
+    Latin scripts we try characteristic diacritics (vi/pl/cs/tr/de/es) and
+    frequent stop-words (en/fr/it/pt/nl/sv/id) — otherwise return 'en'. The
+    user can always override via the src combo."""
     counts: dict[str, int] = {}
     total_letters = 0
     for ch in text:
@@ -356,12 +356,12 @@ def detect_source(text: str) -> str:
     if not counts or total_letters == 0:
         hint = _latin_hint(text)
         return hint or "en"
-    # Японский приоритетнее китайского: если нашли хоть одну кану — это
-    # точно японский, даже если ханьских иероглифов больше.
+    # Japanese takes priority over Chinese: if any kana is present it is
+    # definitely Japanese, even if more Han ideographs are around.
     if counts.get("ja", 0) > 0:
         return "ja"
-    # Лидирующий по доле скрипт, но только если он занимает заметную часть
-    # букв (>30%), иначе считаем текст латинским.
+    # The leading script by share, but only if it covers a noticeable
+    # fraction of letters (>30%); otherwise treat the text as Latin.
     best_lang, best_count = max(counts.items(), key=lambda kv: kv[1])
     if best_count / total_letters > 0.30:
         if best_lang == _CYRILLIC:
@@ -372,16 +372,16 @@ def detect_source(text: str) -> str:
 
 
 def resolve_direction(text: str, preferred_dst: str) -> tuple[str, str]:
-    """Вычислить направление перевода с учётом предпочитаемого языка.
+    """Compute the translation direction respecting the preferred language.
 
-    Если исходный текст уже на preferred_dst — переводим в обратную сторону:
-    между en↔ru инвертируем внутри пары, для остальных случаев dst=en
-    (либо dst=ru, если preferred уже был en).
+    If the source text is already in preferred_dst, translate the other way:
+    for the en↔ru pair we invert inside the pair, otherwise dst=en (or
+    dst=ru if preferred was already en).
     """
     src = detect_source(text)
     if src != preferred_dst:
         return src, preferred_dst
-    # Совпадение src и preferred_dst — нужен fallback-dst.
+    # src equals preferred_dst — pick a fallback dst.
     if preferred_dst == "en":
         return src, "ru"
     return src, "en"

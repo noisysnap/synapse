@@ -1,0 +1,74 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Smoke check (import + syntax)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile every .py file
+        run: python -m compileall -q synapse run_synapse.py
+
+      - name: Import top-level package (no GUI)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -c "import synapse, synapse.app, synapse.config, synapse.lang, synapse.providers; print('ok')"
+
+  build:
+    name: PyInstaller onedir build
+    needs: smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller Synapse.spec
+
+      - name: Verify build artifact
+        run: |
+          if (-not (Test-Path "dist/Synapse/Synapse.exe")) {
+            Write-Error "dist/Synapse/Synapse.exe not found"
+            exit 1
+          }
+          Write-Host "Build OK:"
+          Get-Item dist/Synapse/Synapse.exe | Select-Object Name, Length, LastWriteTime
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Synapse-windows
+          path: dist/Synapse/
+          if-no-files-found: error
+          retention-days: 14

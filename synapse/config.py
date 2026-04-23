@@ -50,8 +50,8 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 def config_path() -> Path:
     if getattr(sys, "frozen", False):
-        # В PyInstaller-сборке храним config.json рядом с Synapse.exe,
-        # а не внутри _MEIPASS (та папка пересоздаётся при каждом запуске).
+        # In a PyInstaller build, store config.json next to Synapse.exe rather
+        # than inside _MEIPASS (that folder is recreated on every launch).
         return Path(sys.executable).resolve().parent / "config.json"
     return Path(__file__).resolve().parent.parent / "config.json"
 
@@ -64,8 +64,8 @@ def load_config() -> dict[str, Any]:
                 user_cfg = json.load(f)
             return _deep_merge(DEFAULT_CONFIG, user_cfg)
         except json.JSONDecodeError:
-            # Битый JSON — сохраняем как .bak, чтобы следующий save не
-            # затёр содержимое пользовательских настроек безвозвратно.
+            # Broken JSON — save it as .bak so the next save does not
+            # silently overwrite the user's settings.
             try:
                 backup = path.with_suffix(path.suffix + ".bak")
                 path.replace(backup)
@@ -77,8 +77,8 @@ def load_config() -> dict[str, Any]:
 
 
 def save_config(cfg: dict[str, Any]) -> None:
-    # Атомарная запись: пишем во временный файл в той же папке, потом
-    # os.replace. Так падение посреди записи не обрезает config.json.
+    # Atomic write: write to a temp file in the same folder, then os.replace.
+    # A crash mid-write will not truncate config.json.
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(

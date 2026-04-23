@@ -6,9 +6,9 @@ import pyperclip
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-# Уникальный AppUserModelID — без него Windows группирует окно с процессом-хостом
-# (python.exe / pythonw.exe) и берёт его иконку для taskbar.
-_APP_USER_MODEL_ID = "noisysnap.synapse.translator.1"
+# Unique AppUserModelID — without it Windows groups our windows with the
+# host process (python.exe / pythonw.exe) and uses its icon for the taskbar.
+_APP_USER_MODEL_ID = "synapse.app.translator.1"
 
 
 def _set_app_user_model_id() -> None:
@@ -34,9 +34,9 @@ from .tray import TrayController, app_icon, make_tray_icon
 
 
 class TranslationSignals(QObject):
-    started = Signal(int)  # (request_id) — начался стрим
+    started = Signal(int)  # (request_id) — stream started
     delta = Signal(int, str)  # (request_id, chunk)
-    finished = Signal(int)  # (request_id) — стрим завершён успешно
+    finished = Signal(int)  # (request_id) — stream completed successfully
     failure = Signal(int, str, str)  # (request_id, message, kind)
 
 
@@ -62,7 +62,7 @@ class TranslationJob(QRunnable):
                 if chunk:
                     self._signals.delta.emit(self._id, chunk)
             if first:
-                # Стрим не выдал ничего — это ошибка.
+                # Stream produced nothing — that is an error.
                 self._signals.failure.emit(self._id, t("err.empty_response"), "generic")
                 return
             self._signals.finished.emit(self._id)
@@ -73,7 +73,7 @@ class TranslationJob(QRunnable):
 
 
 class TriggerBridge(QObject):
-    """Проброс события из потока pynput в главный Qt-поток."""
+    """Forward an event from the pynput thread to the main Qt thread."""
 
     fired = Signal()
 
@@ -95,8 +95,8 @@ class SynapseApp(QObject):
         self._request_counter = 0
         self._paused = False
 
-        # Persistent translators — держим оба, создаём по требованию,
-        # чтобы HTTP keep-alive не рвался между триггерами.
+        # Persistent translators — keep both, create on demand, so that
+        # HTTP keep-alive is not broken between triggers.
         self._openrouter: OpenRouterTranslator | None = None
         self._anthropic: AnthropicTranslator | None = None
 
@@ -118,10 +118,10 @@ class SynapseApp(QObject):
             self._cfg.get("preferred_dst_lang"), "en"
         )
         self._soft_by_request: dict[int, bool] = {}
-        # target для каждого request_id: "popup" или "editor"
+        # target per request_id: "popup" or "editor"
         self._target_by_request: dict[int, str] = {}
 
-        # Editor создаётся лениво при первом открытии.
+        # Editor is created lazily on first open.
         self._editor: EditorWindow | None = None
         self._editor_last_source: str = ""
 
@@ -147,8 +147,8 @@ class SynapseApp(QObject):
     # --- config helpers -----------------------------------------------------
 
     def _on_config_saved(self, cfg_updates: dict) -> None:
-        """Принять обновления из диалога настроек, смерджить, сохранить.
-        Также сбрасывает кэш translator'ов, если сменилась модель/URL."""
+        """Apply updates from the settings dialog: merge and save.
+        Also drops the translator cache if the model or URL changed."""
         prev_or_model = self._cfg["openrouter"]["model"]
         prev_or_url = self._cfg["openrouter"]["base_url"]
         prev_an_model = self._cfg["anthropic"]["model"]
@@ -243,8 +243,8 @@ class SynapseApp(QObject):
             return
         if not text or not text.strip():
             return
-        # Зафиксировать HWND исходного окна ДО показа попапа, чтобы потом
-        # знать, куда возвращать фокус для Paste.
+        # Capture the source window's HWND BEFORE showing the popup so we
+        # know where to return focus for Paste later.
         self._popup.remember_source_window()
         self._last_source_text = text
         preferred_dst = normalize_lang_code(self._cfg.get("preferred_dst_lang"), "en")
@@ -255,13 +255,14 @@ class SynapseApp(QObject):
 
     @Slot(str)
     def _on_popup_dst_changed(self, new_dst: str) -> None:
-        """Пользователь сменил язык перевода прямо в popup — перевод обновляется
-        без мигания «Переводится…», старый текст остаётся до первого чанка."""
+        """User changed the destination language in the popup — refresh
+        the translation without flashing "Translating…": the old text stays
+        until the first chunk arrives."""
         dst = normalize_lang_code(new_dst, "en")
         if not self._last_source_text or not self._last_source_text.strip():
             return
-        # Пересчитываем src по тексту, чтобы обработать случай ru↔en инверсии
-        # (если dst совпал с текущим src — направление переворачивается).
+        # Recompute src from the text to handle the ru↔en inversion case
+        # (when dst matches the current src, direction flips).
         src, dst = resolve_direction(self._last_source_text, dst)
         self._current_src = src
         self._current_dst = dst
@@ -269,14 +270,14 @@ class SynapseApp(QObject):
 
     @Slot(str)
     def _on_popup_src_changed(self, new_src: str) -> None:
-        """Пользователь вручную сменил язык оригинала — используем его как есть,
-        направление не пересчитываем."""
+        """User manually changed the source language — take it as-is and
+        do not recompute the direction."""
         src = normalize_lang_code(new_src, "en")
         if not self._last_source_text or not self._last_source_text.strip():
             return
         dst = self._current_dst
         if src == dst:
-            # Нельзя переводить на тот же язык: инвертируем dst на разумный дефолт.
+            # Can't translate to the same language: flip dst to a sensible default.
             dst = "ru" if src == "en" else "en"
         self._current_src = src
         self._current_dst = dst
@@ -299,9 +300,10 @@ class SynapseApp(QObject):
             else:
                 self._popup.show_loading(src, dst)
 
-        # Обрываем текущий стрим на обоих провайдерах: старый запрос
-        # бесполезен, его сигналы всё равно отфильтруются по request_id,
-        # но HTTP и поток QThreadPool висели бы до исчерпания токенов.
+        # Abort the current stream on both providers: the old request is
+        # useless, its signals would be filtered by request_id anyway, but
+        # the HTTP connection and the QThreadPool slot would otherwise hang
+        # until tokens are exhausted.
         self._cancel_active_streams()
 
         self._request_counter += 1
@@ -372,7 +374,7 @@ class SynapseApp(QObject):
             self._popup.show_error(message)
         if kind == "auth":
             if self._tray.open_settings():
-                pass  # пользователь мог ввести ключ; новый перевод он запустит сам
+                pass  # user may have entered a key; they trigger the next translation themselves
 
     # --- editor -------------------------------------------------------------
 
@@ -381,7 +383,7 @@ class SynapseApp(QObject):
             return self._editor
         ed_cfg = self._cfg.get("editor", {})
         preferred_dst = normalize_lang_code(self._cfg.get("preferred_dst_lang"), "en")
-        # src по умолчанию — противоположный dst между ru/en, как и в popup.
+        # Default src — the opposite of dst within ru/en, same as the popup.
         default_src = "ru" if preferred_dst == "en" else "en"
         self._editor = EditorWindow(
             default_width=int(ed_cfg.get("width", 900)),
@@ -414,10 +416,11 @@ class SynapseApp(QObject):
 
     @Slot(str, str, str)
     def _on_editor_translate_requested(self, text: str, src: str, dst: str) -> None:
-        # Pause не глушит editor — это ручной ввод, а не clipboard-триггер.
+        # Pause does not silence the editor — it's manual input, not a
+        # clipboard trigger.
         self._editor_last_source = text
-        # soft=True, чтобы не мигало «Переводится…» при каждом нажатии,
-        # но при первом запросе поле всё равно заполнится.
+        # soft=True avoids flashing "Translating…" on every keystroke; the
+        # first request still fills the field.
         self._run_translation(text, src, dst, soft=True, target="editor")
 
     @Slot()
@@ -467,14 +470,14 @@ def main() -> int:
         TrayController.warn_missing_tray()
         return 2
 
-    # Если пользователь перенёс папку со сборкой, записанная в реестре
-    # команда автозапуска больше не ведёт к exe — перезаписываем.
+    # If the user moved the build folder, the autostart command stored in
+    # the registry no longer points to the exe — rewrite it.
     autostart.self_heal()
 
     app = SynapseApp(qapp)
-    # Диалог настроек показываем после старта event loop. Если вызвать
-    # напрямую, dlg.exec() запустит вложенный loop ещё до qapp.exec(), и
-    # трей может не успеть инициализироваться.
+    # Show the settings dialog after the event loop starts. Calling it
+    # directly would spin up a nested loop before qapp.exec(), and the
+    # tray may not have initialised yet.
     QTimer.singleShot(0, lambda: _ensure_api_key_on_startup(app))
 
     return qapp.exec()

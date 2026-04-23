@@ -32,8 +32,8 @@ def _dbg(*a) -> None:
         print("[synapse/popup]", *a, file=sys.stderr, flush=True)
 
 
-RESIZE_MARGIN = 6  # толщина невидимой рамки для хвата курсором
-TITLEBAR_H = 28    # высота зоны, за которую можно таскать окно
+RESIZE_MARGIN = 6  # invisible edge thickness reserved for resize-grab
+TITLEBAR_H = 28    # height of the drag-handle strip at the top
 
 
 class PopupWindow(QWidget):
@@ -52,8 +52,8 @@ class PopupWindow(QWidget):
         self._default_height = default_height
         self._cursor_off = (cursor_offset_x, cursor_offset_y)
         self._current_translation = ""
-        self._source_hwnd: int | None = None  # HWND окна, которое было активным до показа попапа
-        self._user_size: QSize | None = None  # None пока пользователь сам не ресайзил
+        self._source_hwnd: int | None = None  # HWND of the window that was active before the popup
+        self._user_size: QSize | None = None  # None until the user resizes manually
         self._preferred_dst = preferred_dst
         self._preferred_src = "en"
         self._close_on_copy = close_on_copy
@@ -169,8 +169,8 @@ class PopupWindow(QWidget):
         self._translation_view.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._translation_view.setCursor(Qt.CursorShape.IBeamCursor)
         self._translation_view.setPlainText(t("popup.translating"))
-        # Отступы внутри текстового поля — задаём чуть-чуть, чтобы текст
-        # не прилипал к краю скроллбара/рамки фрейма.
+        # Inner text padding — set a small amount so text does not stick
+        # to the scrollbar edge or the frame border.
         self._translation_view.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._translation_view, 1)
 
@@ -211,17 +211,17 @@ class PopupWindow(QWidget):
 
         self._streaming: bool = False
 
-        # Ручной resize по краям
+        # Manual edge-based resize
         self._resize_edge: str | None = None
         self._resize_start_geom = None
         self._resize_start_pos = None
 
-        # Перетаскивание окна
+        # Window drag
         self._drag_offset: QPoint | None = None
         self._current_cursor_shape: Qt.CursorShape | None = None
 
-        # Включаем mouse tracking на всех дочерних виджетах и ставим event filter,
-        # чтобы получать MouseMove/MouseButtonPress даже над детьми.
+        # Enable mouse tracking on all child widgets and install an event
+        # filter so we receive MouseMove/MouseButtonPress over children too.
         self._install_mouse_hooks(self)
 
     def _install_mouse_hooks(self, widget: QWidget) -> None:
@@ -234,7 +234,7 @@ class PopupWindow(QWidget):
     # --- public API ---------------------------------------------------------
 
     def set_preferred_dst(self, code: str) -> None:
-        """Обновить выбранный язык в popup извне, без эмита сигнала."""
+        """Set the selected language from outside without emitting a signal."""
         self._preferred_dst = code
         self._lang_combo.set_value(code)
 
@@ -242,7 +242,7 @@ class PopupWindow(QWidget):
         self._close_on_copy = bool(enabled)
 
     def apply_ui_language(self) -> None:
-        """Обновить статические строки после смены языка интерфейса."""
+        """Refresh static strings after a UI language change."""
         self._src_combo.setToolTip(t("popup.src_tooltip"))
         self._lang_combo.setToolTip(t("popup.dst_tooltip"))
         self._copy_btn.setText(t("popup.copy"))
@@ -269,10 +269,11 @@ class PopupWindow(QWidget):
         self.src_language_changed.emit(code)
 
     def set_direction(self, src: str, dst: str) -> None:
-        """Обновить отображаемое направление без перезапуска анимации.
+        """Update the displayed direction without restarting the animation.
 
-        Синхронизирует оба combo (без эмита сигналов).
-        Текст перевода не трогает — его затрёт begin_translation/append_translation."""
+        Syncs both combos (without emitting signals). Does not touch the
+        translation text — it will be overwritten by
+        begin_translation / append_translation."""
         self._src_combo.set_value(src)
         self._lang_combo.set_value(dst)
         self._preferred_src = src
@@ -297,28 +298,29 @@ class PopupWindow(QWidget):
         self._set_actions_enabled(bool(translation))
 
     def begin_translation(self) -> None:
-        """Начать накопление streaming-перевода. Чистит поле, ждёт первый delta."""
+        """Start accumulating a streaming translation. Clears the field,
+        then waits for the first delta."""
         self._streaming = True
         self._current_translation = ""
         self._translation_view.setPlainText("")
         self._set_actions_enabled(False)
 
     def begin_soft_replace(self) -> None:
-        """Мягкий старт нового перевода: оставляем старый текст видимым,
-        чтобы не было мигания. Первый вызов append_translation затрёт его."""
+        """Soft start: keep the old text visible to avoid flashing. The
+        first append_translation call overwrites it."""
         self._streaming = True
         self._current_translation = ""
         self._set_actions_enabled(False)
         self._show_updating(t("popup.updating"))
 
     def append_translation(self, delta: str) -> None:
-        """Дописать очередной кусок перевода."""
+        """Append the next translation chunk."""
         if not delta:
             return
         first_chunk = self._current_translation == ""
         self._streaming = True
         self._current_translation += delta
-        # При soft-replace первый чанк затирает старый текст.
+        # On a soft-replace the first chunk overwrites the old text.
         self._translation_view.setPlainText(self._current_translation)
         if first_chunk:
             self._hide_updating()
@@ -338,7 +340,7 @@ class PopupWindow(QWidget):
             bar.setValue(0)
 
     def finish_translation(self) -> None:
-        """Сигнал, что стрим завершён."""
+        """Mark the stream as finished."""
         self._streaming = False
         self._hide_updating()
 
@@ -353,11 +355,13 @@ class PopupWindow(QWidget):
     # --- internals ----------------------------------------------------------
 
     def remember_source_window(self) -> None:
-        """Запомнить, какое окно было на переднем плане до показа попапа —
-        чтобы потом вернуть ему фокус и отправить туда Ctrl+V."""
+        """Remember which window was in the foreground before the popup
+        appeared — so that focus can later be returned to it and Ctrl+V
+        sent there."""
         hwnd = self._capture_foreground_hwnd()
-        # Игнорируем, если foreground — это сам попап (повторный триггер поверх
-        # уже открытого окна). В этом случае прежний _source_hwnd валиден.
+        # Ignore if the foreground is the popup itself (a repeat trigger
+        # on top of an already-open window). The previous _source_hwnd
+        # is still valid in that case.
         own = int(self.winId()) if self.isVisible() else 0
         if hwnd and hwnd != own:
             self._source_hwnd = hwnd
@@ -403,24 +407,24 @@ class PopupWindow(QWidget):
         QTimer.singleShot(1200, lambda: self._copy_btn.setText(t("popup.copy")))
 
     def _restore_source_foreground(self) -> None:
-        """Вернуть фокус окну, из которого был взят оригинал (без отправки клавиш)."""
+        """Return focus to the window the source was copied from (no key send)."""
         target = self._source_hwnd
         if sys.platform == "win32" and target:
             restored = self._restore_foreground(target)
             _dbg(f"close_on_copy restore_foreground hwnd={target} restored={restored}")
 
     def _paste_translation(self) -> None:
-        """Положить перевод в буфер и отправить Ctrl+V в активное окно,
-        заменяя выделенный оригинал на перевод."""
+        """Put the translation on the clipboard and send Ctrl+V to the
+        active window, replacing the selected original with the translation."""
         if not self._current_translation:
             return
         cb = QApplication.clipboard()
         cb.setText(self._current_translation, QClipboard.Mode.Clipboard)
-        # Скрываем popup, чтобы фокус гарантированно вернулся в целевое окно.
+        # Hide the popup so focus reliably returns to the target window.
         self.hide()
-        # Задержка даёт ОС время увести popup с переднего плана и обработать
-        # очередь Qt. Затем принудительно возвращаем фокус исходному окну
-        # и шлём Ctrl+V.
+        # The delay gives the OS time to move the popup off the foreground
+        # and drain Qt's queue. Then we force focus back to the source
+        # window and dispatch Ctrl+V.
         QTimer.singleShot(120, self._do_paste_into_source)
 
     def _capture_foreground_hwnd(self) -> int | None:
@@ -435,9 +439,10 @@ class PopupWindow(QWidget):
             return None
 
     def _restore_foreground(self, hwnd: int) -> bool:
-        """Вернуть фокус hwnd через AttachThreadInput-трюк.
-        Windows запрещает SetForegroundWindow без явного user input, но
-        присоединение потока владельца текущего foreground снимает запрет."""
+        """Bring focus to hwnd via the AttachThreadInput trick.
+        Windows forbids SetForegroundWindow without explicit user input,
+        but attaching to the thread that owns the current foreground
+        lifts the restriction."""
         if sys.platform != "win32" or not hwnd:
             return False
         try:
@@ -450,7 +455,7 @@ class PopupWindow(QWidget):
                 _dbg(f"restore_foreground: hwnd={hwnd} is no longer valid")
                 return False
 
-            # Если окно свёрнуто — развернём.
+            # If the window is minimised, restore it.
             SW_RESTORE = 9
             if user32.IsIconic(hwnd):
                 user32.ShowWindow(hwnd, SW_RESTORE)
@@ -487,18 +492,18 @@ class PopupWindow(QWidget):
         if sys.platform == "win32" and target:
             restored = self._restore_foreground(target)
             _dbg(f"restore_foreground hwnd={target} restored={restored}")
-            # Ещё одна короткая пауза — Windows нужно время на смену фокуса
-            # после AttachThreadInput/SetForegroundWindow.
+            # Another short delay — Windows needs time to switch focus
+            # after AttachThreadInput/SetForegroundWindow.
             QTimer.singleShot(40, self._send_paste_keystroke)
             return
         self._send_paste_keystroke()
 
     def _send_paste_keystroke(self) -> None:
-        """Отправить Ctrl+V через Windows SendInput по виртуальным клавишам.
-        Не зависит от раскладки (в отличие от отправки символа 'v', который
-        при русской раскладке превращается в 'м')."""
+        """Send Ctrl+V via Windows SendInput using virtual key codes.
+        Layout-independent (unlike sending the 'v' character, which on a
+        Russian layout becomes 'м')."""
         if sys.platform != "win32":
-            # Fallback для не-Windows — pynput с символом.
+            # Fallback for non-Windows — pynput with the character.
             try:
                 kb = pynput_keyboard.Controller()
                 with kb.pressed(pynput_keyboard.Key.ctrl):
@@ -545,9 +550,10 @@ class PopupWindow(QWidget):
                     ("wParamH", wintypes.WORD),
                 )
 
-            # Union должен включать MOUSEINPUT, чтобы его размер совпал с
-            # реальным WinAPI INPUT (40 байт на x64). Без MOUSEINPUT получится
-            # 32 байта, и SendInput вернёт ERROR_INVALID_PARAMETER (87).
+            # The union must include MOUSEINPUT so its size matches the
+            # real WinAPI INPUT (40 bytes on x64). Without MOUSEINPUT the
+            # struct is 32 bytes and SendInput returns
+            # ERROR_INVALID_PARAMETER (87).
             class _INPUTunion(ctypes.Union):
                 _fields_ = (
                     ("mi", MOUSEINPUT),
@@ -603,7 +609,7 @@ class PopupWindow(QWidget):
             return
         super().keyPressEvent(event)
 
-    # --- resize через края окна --------------------------------------------
+    # --- edge-based resize -------------------------------------------------
 
     def _edge_at(self, pos: QPoint) -> str | None:
         x, y = pos.x(), pos.y()
@@ -657,8 +663,8 @@ class PopupWindow(QWidget):
         )
 
     def _set_override_cursor(self, shape: Qt.CursorShape | None) -> None:
-        """Держит ровно один активный override-курсор.
-        Передай shape, чтобы поставить/заменить, и None чтобы снять."""
+        """Keep exactly one active override cursor.
+        Pass a shape to set/replace, or None to clear."""
         current = self._current_cursor_shape
         if shape is None:
             if current is not None:
@@ -681,7 +687,7 @@ class PopupWindow(QWidget):
         if edge is not None:
             self._set_override_cursor(self._EDGE_CURSORS[edge])
             return
-        # Не на краю. Находим дочерний виджет под курсором и берём его shape.
+        # Not on an edge. Locate the child under the cursor and use its shape.
         local = self.mapFromGlobal(gp)
         child = self.childAt(local)
         shape: Qt.CursorShape | None = None
@@ -700,7 +706,7 @@ class PopupWindow(QWidget):
     def eventFilter(self, obj, event):  # noqa: N802
         et = event.type()
         if et == QEvent.Type.MouseMove:
-            # глобальная позиция мыши
+            # global mouse position
             try:
                 gp = event.globalPosition().toPoint()
             except AttributeError:
@@ -722,9 +728,10 @@ class PopupWindow(QWidget):
                     self._resize_edge = edge
                     self._resize_start_geom = self.geometry()
                     self._resize_start_pos = gp
-                    return True  # глотаем — ресайз важнее любых кликов под курсором
+                    return True  # swallow — resize takes priority over any clicks underneath
                 if self._in_titlebar_global(gp) and obj is self._frame:
-                    # Только клик по самому frame (а не по кнопке/метке) инициирует drag.
+                    # Only a click on the frame itself (not on a button or
+                    # label) starts the drag.
                     self._drag_offset = gp - self.frameGeometry().topLeft()
                     return True
         elif et == QEvent.Type.MouseButtonRelease:
@@ -800,37 +807,38 @@ class PopupWindow(QWidget):
             f"pynput pressed at ({x},{y}) | suppress_remaining={remaining:.3f}s "
             f"popup=[{popup_geo.x()},{popup_geo.y()} {popup_geo.width()}x{popup_geo.height()}]"
         )
-        # Пока открыт dropdown комбобокса, — и короткое время после его
-        # закрытия — не трогаем popup. Иначе клик по пункту, выходящему за
-        # пределы popup-окна, воспринимается как outside-click, и popup
-        # закрывается раньше, чем Qt успевает применить выбор.
+        # While a combobox dropdown is open — and for a short window after
+        # it closes — leave the popup alone. Otherwise a click on an item
+        # extending past the popup's bounds is treated as an outside-click
+        # and the popup hides before Qt applies the selection.
         if remaining > 0:
             _dbg("  → suppressed (dropdown cooldown)")
             return
-        # pynput-колбэк из своего потока — Qt-проверки делаем в слоте.
+        # pynput callback runs on its own thread — defer Qt checks to the slot.
         self._outside_click.emit(int(x), int(y))
 
     def _on_dropdown_open(self) -> None:
         self._dropdown_suppress_until = _monotonic() + 30.0
         _dbg(f"dropdown OPEN (suppress_until=+30s), stopping pynput listener")
-        # Полностью останавливаем pynput на время открытого dropdown. WH_MOUSE_LL
-        # hook может искажать/задерживать клик-сообщения Windows так, что
-        # контейнер dropdown их не получает.
+        # Stop pynput entirely while a dropdown is open. The WH_MOUSE_LL
+        # hook can distort or delay Windows click messages enough that
+        # the dropdown container never receives them.
         self._stop_outside_listener()
 
     def _on_dropdown_close(self) -> None:
-        # Suppress окно совпадает с задержкой рестарта listener — иначе
-        # между рестартом и снятием suppress остаётся щель.
+        # The suppress window matches the listener-restart delay, so there
+        # is no gap between restart and suppress release.
         self._dropdown_suppress_until = _monotonic() + 0.30
         _dbg(f"dropdown CLOSE (suppress_until=+0.30s), restarting pynput")
-        # Возвращаем pynput обратно. Короткая задержка нужна, чтобы Qt успел
-        # обработать click-inside-dropdown без вмешательства хука.
+        # Bring pynput back. The short delay lets Qt process the
+        # click-inside-dropdown without the hook getting in the way.
         QTimer.singleShot(300, self._restart_outside_listener_if_visible)
 
     def _restart_outside_listener_if_visible(self) -> None:
-        # Popup мог скрыться за 300мс между dropdown CLOSE и рестартом.
-        # Тогда запускать listener бессмысленно — он останется жить до
-        # следующего hide/close. Рестартуем только если окно всё ещё видно.
+        # The popup could have hidden during the 300ms between dropdown
+        # CLOSE and the restart. Starting the listener then is pointless —
+        # it would survive until the next hide/close. Restart only if the
+        # window is still visible.
         if not self.isVisible():
             _dbg("restart listener skipped — popup hidden")
             return

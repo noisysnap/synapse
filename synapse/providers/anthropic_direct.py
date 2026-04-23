@@ -23,9 +23,10 @@ class AnthropicTranslator:
         self._active_stream_lock = Lock()
 
     def cancel_active_stream(self) -> None:
-        """Закрыть текущий активный HTTP-стрим, если он есть.
-        Вызывается из UI-потока когда приходит новый триггер перевода —
-        старый запрос надо оборвать, чтобы не тратить токены и поток пула."""
+        """Close the active HTTP stream, if any.
+        Called from the UI thread when a new translation trigger arrives —
+        the old request must be aborted so it does not burn tokens or hog
+        a thread-pool slot."""
         with self._active_stream_lock:
             stream = self._active_stream
             self._active_stream = None
@@ -49,8 +50,9 @@ class AnthropicTranslator:
         return self._client
 
     def _close_client(self) -> None:
-        """Закрыть httpx-пул текущего клиента. Без этого при смене ключа/модели
-        старый Anthropic-клиент висит с keep-alive соединениями до GC."""
+        """Close the current client's httpx pool. Without this, swapping
+        the key or model leaves the old Anthropic client around with
+        keep-alive connections until GC."""
         client = self._client
         if client is None:
             return
@@ -62,7 +64,7 @@ class AnthropicTranslator:
             pass
 
     def close(self) -> None:
-        """Явное освобождение ресурсов. Вызывается из app при смене модели."""
+        """Explicit resource release. Called from app on model change."""
         self._close_client()
 
     def translate_stream(self, text: str, src: str, dst: str) -> Iterator[str]:
@@ -107,9 +109,9 @@ class AnthropicTranslator:
                         if delta:
                             yield delta
                 finally:
-                    # Снимаем регистрацию на случай, если cancel прилетит
-                    # после нормального завершения (иначе в лок попадёт
-                    # уже закрытый __exit__-ом стрим).
+                    # Unregister in case cancel arrives after normal
+                    # completion (otherwise the lock would expose a stream
+                    # already closed by __exit__).
                     with self._active_stream_lock:
                         if self._active_stream is stream:
                             self._active_stream = None

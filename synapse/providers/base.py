@@ -7,7 +7,7 @@ from ..i18n import t
 
 
 class TranslationError(Exception):
-    """Ошибка перевода, пригодная для показа пользователю."""
+    """A translation error suitable for showing to the user."""
 
     def __init__(self, message: str, *, kind: str = "generic") -> None:
         super().__init__(message)
@@ -45,9 +45,9 @@ LANG_NAMES = {
 
 CUSTOM_PROMPT_MAX_LEN = 800
 
-# Паттерны, которые пытаются переопределить identity/safety-правила через
-# custom_prompt. Срезаем их, не блокируя весь prompt — пользователь всё равно
-# сможет задать стиль ("formal tone", "use British spelling" и т.п.).
+# Patterns that attempt to override identity/safety rules through
+# custom_prompt. We strip them rather than rejecting the whole prompt — the
+# user can still set a style ("formal tone", "use British spelling", etc.).
 _INJECTION_PATTERNS = [
     re.compile(r"(?i)\bignore\s+(all\s+)?(previous|prior|above|earlier)\b[^\n]*"),
     re.compile(r"(?i)\bdisregard\s+(all\s+)?(previous|prior|above|earlier)\b[^\n]*"),
@@ -64,9 +64,9 @@ _INJECTION_PATTERNS = [
     re.compile(r"(?i)</?\s*(system|user|assistant|instructions?|source_text|user_style_hints)\s*/?>"),
 ]
 
-# Refusal-маркеры в начале ответа. Проверяются на первых ~200 символах вывода
-# в нижнем регистре. Если ответ начинается так и при этом сильно короче
-# источника, считаем это отказом.
+# Refusal markers at the start of the response. Checked against the first
+# ~200 lowercase characters of output. If the response starts with one and
+# is much shorter than the source, we treat it as a refusal.
 _REFUSAL_PREFIXES = (
     "i can't", "i cannot", "i can not", "i won't", "i will not",
     "i'm unable", "i am unable", "i'm not able", "i am not able",
@@ -80,8 +80,9 @@ _REFUSAL_PREFIXES = (
     "как ии", "как языковая модель", "как ассистент",
 )
 
-# Лексика, появление которой в ответе повышает уверенность, что это именно
-# refusal, а не буквальный перевод совпавшей фразы.
+# Vocabulary that, when present in the response, raises confidence that
+# the output is a refusal rather than a literal translation that happens
+# to match a refusal phrase.
 _REFUSAL_MARKERS = (
     "translat", "content", "harmful", "inappropriate", "policy", "policies",
     "guideline", "unable to", "cannot help", "can't help", "cannot assist",
@@ -94,16 +95,16 @@ _REFUSAL_MARKERS = (
 
 
 def sanitize_custom_prompt(extra: str | None) -> str:
-    """Очищает пользовательский custom_prompt от очевидных попыток
-    переопределить identity/safety-правила. Сохраняет стилистические
-    подсказки, срезает инжекшн-паттерны и экранирует XML-теги."""
+    """Strip obvious attempts to override identity/safety rules from the
+    user's custom_prompt. Stylistic hints are preserved, injection patterns
+    are removed, and XML tags are escaped."""
     if not extra:
         return ""
     cleaned = extra.strip()
     if not cleaned:
         return ""
 
-    # Лимит длины (№4). Режем по целым словам, где возможно.
+    # Length limit (rule 4). Cut on word boundaries when possible.
     if len(cleaned) > CUSTOM_PROMPT_MAX_LEN:
         cut = cleaned[:CUSTOM_PROMPT_MAX_LEN]
         last_space = cut.rfind(" ")
@@ -111,23 +112,22 @@ def sanitize_custom_prompt(extra: str | None) -> str:
             cut = cut[:last_space]
         cleaned = cut
 
-    # Вырезаем инжекшн-паттерны (№3).
+    # Strip injection patterns (rule 3).
     for pat in _INJECTION_PATTERNS:
         cleaned = pat.sub("", cleaned)
 
-    # Экранируем угловые скобки, чтобы пользователь не смог открыть/закрыть
-    # служебный XML-блок.
+    # Escape angle brackets so the user cannot open/close a system XML block.
     cleaned = cleaned.replace("<", "&lt;").replace(">", "&gt;")
 
-    # Убираем лишние пустые строки, оставшиеся после вырезаний.
+    # Collapse blank lines left over after the cuts.
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned
 
 
 def escape_source_text(text: str) -> str:
-    """Экранирует всё, что может быть воспринято как закрытие <source_text>
-    (№1). Используем HTML-подобное экранирование — визуально перевод не
-    пострадает, а сломать рамку невозможно."""
+    """Escape anything that could be misread as closing <source_text>
+    (rule 1). HTML-style escaping leaves the translation visually intact
+    while making the frame unbreakable."""
     return text.replace("<", "&lt;").replace(">", "&gt;")
 
 
@@ -181,8 +181,8 @@ def build_system_prompt(src: str, dst: str, extra: str | None = None) -> str:
 
 
 def build_user_message(text: str) -> str:
-    """Собирает user-сообщение с экранированным source_text и напоминанием
-    после блока (№1 + №5 из плана защиты)."""
+    """Build the user message: escaped source_text plus a post-block
+    reminder (rules 1 and 5 of the defence plan)."""
     escaped = escape_source_text(text)
     return (
         "Translate the text inside <source_text> tags. "
@@ -196,9 +196,9 @@ def build_user_message(text: str) -> str:
 
 
 def unescape_output(text: str) -> str:
-    """Возвращает &lt;/&gt;/&amp; назад в угловые скобки и амперсанды —
-    инверсия escape_source_text на стороне вывода. Вызывается на полной
-    накопленной строке, не покусочно (иначе можем разрезать сущность)."""
+    """Convert &lt;/&gt;/&amp; back to <, >, & — the inverse of
+    escape_source_text on the output side. Called on the full accumulated
+    string, not piecewise (otherwise an entity could be split)."""
     return (
         text
         .replace("&lt;", "<")
@@ -208,14 +208,14 @@ def unescape_output(text: str) -> str:
 
 
 def stream_postprocess(chunks: Iterator[str], source_len: int) -> Iterator[str]:
-    """Обёртка над сырым стримом провайдера:
-      - буферизует хвост, чтобы не отдавать наружу обрезанную HTML-сущность
-        (&lt; / &gt; / &amp;) — иначе пользователь увидит «&am» в popup;
-      - разэкранирует сущности обратно в <, >, &;
-      - по завершении проверяет, не является ли накопленный ответ
-        refusal'ом, и если да — бросает TranslationError.
+    """Wrap the provider's raw stream:
+      - buffer the tail so a truncated HTML entity (&lt; / &gt; / &amp;)
+        is never emitted — otherwise the user sees "&am" in the popup;
+      - unescape entities back to <, >, &;
+      - on completion, check whether the accumulated response is a refusal
+        and raise TranslationError if so.
     """
-    MAX_ENTITY_LEN = 5  # "&amp;" — самая длинная из интересующих.
+    MAX_ENTITY_LEN = 5  # "&amp;" is the longest entity of interest.
     buffer = ""
     full = ""
     for chunk in chunks:
@@ -223,8 +223,8 @@ def stream_postprocess(chunks: Iterator[str], source_len: int) -> Iterator[str]:
             continue
         full += chunk
         buffer += chunk
-        # Удерживаем хвост длиной до MAX_ENTITY_LEN-1, если он начинается
-        # с '&' и не содержит ';' — потенциально незавершённая сущность.
+        # Hold back up to MAX_ENTITY_LEN-1 characters of tail when they
+        # start with '&' and contain no ';' — a possibly unfinished entity.
         cut = len(buffer)
         amp_idx = buffer.rfind("&", max(0, len(buffer) - MAX_ENTITY_LEN))
         if amp_idx != -1 and ";" not in buffer[amp_idx:]:
@@ -241,13 +241,13 @@ def stream_postprocess(chunks: Iterator[str], source_len: int) -> Iterator[str]:
 
 
 def looks_like_refusal(output: str, source_len: int) -> bool:
-    """Эвристика для детекта отказа модели (№6).
-    Срабатывает после завершения стрима, когда ответ начинается с типичной
-    refusal-фразы И значительно короче исходника.
+    """Heuristic detector for a model refusal (rule 6).
+    Runs after stream completion. Fires when the response starts with a
+    typical refusal phrase AND is significantly shorter than the source.
 
-    Для коротких исходников (< 60 символов) детектор выключен: легитимный
-    перевод короткого текста может случайно начаться с "I can't" и быть
-    сопоставимой длины с refusal-фразой.
+    For short sources (< 60 characters) the detector is disabled: a
+    legitimate translation of a short text may incidentally start with
+    "I can't" and be comparable in length to a refusal phrase.
     """
     if not output or source_len < 60:
         return False
@@ -255,9 +255,9 @@ def looks_like_refusal(output: str, source_len: int) -> bool:
     head = lower[:200]
     if not any(head.startswith(p) for p in _REFUSAL_PREFIXES):
         return False
-    # Нужен И refusal-префикс, И refusal-лексика в теле, И значительно
-    # короче исходника. Это три независимых сигнала — false positives
-    # практически исключены.
+    # Need ALL three signals: the refusal prefix, refusal vocabulary in
+    # the body, and significantly shorter output than the source. False
+    # positives are effectively eliminated.
     has_marker = any(m in lower for m in _REFUSAL_MARKERS)
     too_short = len(output) * 3 < source_len
     return has_marker and too_short

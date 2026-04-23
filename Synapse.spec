@@ -7,17 +7,18 @@ from pathlib import Path
 project_root = Path(SPECPATH)
 icon_path = project_root / "synapse" / "assets" / "icon.ico"
 
-# Keyring подбирает backend через entry points, а PyInstaller их не видит —
-# явно подтягиваем Windows-бэкенд, иначе get/set_password упадут в рантайме.
-# pynput на Windows использует win32-подмодули, которые тоже невидимы статически.
+# keyring resolves its backend through entry points which PyInstaller does not
+# pick up — explicitly pull in the Windows backend, otherwise get/set_password
+# will fail at runtime. pynput on Windows uses win32 submodules that are also
+# invisible to static analysis.
 hidden_imports = [
     "keyring.backends.Windows",
     "pynput.keyboard._win32",
     "pynput.mouse._win32",
 ]
 
-# В сборку кладём папку assets целиком — tray.py обращается к ней через
-# Path(__file__).parent / "assets", что в frozen режиме будет внутри _internal.
+# The whole assets folder is bundled — tray.py reads it via
+# Path(__file__).parent / "assets", which in frozen mode lives inside _internal.
 datas = [
     (str(project_root / "synapse" / "assets"), "synapse/assets"),
 ]

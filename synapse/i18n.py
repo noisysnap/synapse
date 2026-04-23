@@ -14,7 +14,7 @@ DEFAULT_UI_LANG = "en"
 
 _STRINGS: dict[str, dict[str, str]] = {
     "ru": {
-        # Трей
+        # Tray
         "tray.pause": "Пауза",
         "tray.resume": "Продолжить",
         "tray.editor": "Режим редактора",
@@ -23,7 +23,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "tray.tooltip": "Synapse",
         "tray.tooltip_paused_suffix": " — пауза",
         "tray.unavailable": "Системный трей недоступен в этой системе.",
-        # Уведомления
+        # Notifications
         "notify.missing_key_openrouter": "API-ключ OpenRouter не задан. Откройте «Настройки» в трее.",
         "notify.missing_key_anthropic": "API-ключ Anthropic не задан. Откройте «Настройки» в трее.",
         # Popup
@@ -44,7 +44,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "editor.swap_tooltip": "Поменять языки местами",
         "editor.translating": "Переводится…",
         "editor.ready": "Готово",
-        # Диалог настроек
+        # Settings dialog
         "settings.title": "Настройки Synapse",
         "settings.tab_provider": "Провайдер",
         "settings.tab_instruction": "Инструкция",
@@ -101,7 +101,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "а фокус возвращается в окно, откуда был взят текст. "
             "В режиме редактора настройка не действует."
         ),
-        # Ошибки провайдеров
+        # Provider errors
         "err.openai_pkg_missing": "Пакет openai не установлен: {e}",
         "err.anthropic_pkg_missing": "Пакет anthropic не установлен: {e}. Установите: pip install anthropic",
         "err.anthropic_pkg_missing_short": "Пакет anthropic не установлен: {e}",

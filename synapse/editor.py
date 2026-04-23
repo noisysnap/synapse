@@ -21,13 +21,14 @@ from .tray import app_icon
 
 
 class EditorWindow(QWidget):
-    """Отдельное окно редактора переводов (Google-Translate-style).
+    """Standalone translation editor window (Google-Translate style).
 
-    Обычное top-level окно: можно сворачивать, перекрывать, изменять размер.
-    Автоперевод по debounce на вводе текста. Смена языков/swap — мгновенно.
+    Plain top-level window: can be minimised, layered, resized.
+    Auto-translates on input via debounce. Language swap takes effect
+    immediately.
     """
 
-    # Сигналы наружу (в SynapseApp)
+    # Outgoing signals (to SynapseApp)
     translate_requested = Signal(str, str, str)  # (text, src, dst)
     closed = Signal()
 
@@ -68,7 +69,7 @@ class EditorWindow(QWidget):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        # Верхняя панель: src → swap → dst → (растяжка) → copy
+        # Top panel: src → swap → dst → (stretch) → copy
         header = QHBoxLayout()
         header.setSpacing(6)
 
@@ -105,7 +106,7 @@ class EditorWindow(QWidget):
 
         root.addLayout(header)
 
-        # Сплиттер с двумя текстовыми полями
+        # Splitter with two text fields
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.setChildrenCollapsible(False)
         self._splitter.setHandleWidth(6)
@@ -128,7 +129,7 @@ class EditorWindow(QWidget):
 
         root.addWidget(self._splitter, 1)
 
-        # Статусная строка
+        # Status line
         self._status = QLabel("")
         self._status.setObjectName("statusLabel")
         root.addWidget(self._status)
@@ -187,7 +188,7 @@ class EditorWindow(QWidget):
         """)
 
     def _wire_shortcuts(self) -> None:
-        # Ctrl+Enter — мгновенный перевод без debounce.
+        # Ctrl+Enter — translate immediately, bypassing debounce.
         for seq in (QKeySequence("Ctrl+Return"), QKeySequence("Ctrl+Enter")):
             sc = QShortcut(seq, self)
             sc.activated.connect(self._emit_translate_now)
@@ -195,14 +196,14 @@ class EditorWindow(QWidget):
     # --- public API ---------------------------------------------------------
 
     def show_with(self, source_text: str, translation: str, src: str, dst: str) -> None:
-        """Показать окно с заданным текстом. Если source_text непустой —
-        триггерит немедленный перевод (без debounce)."""
+        """Show the window with the given text. If source_text is non-empty,
+        an immediate translation is triggered (no debounce)."""
         self._preferred_src = src
         self._preferred_dst = dst
         self._src_combo.set_value(src)
         self._dst_combo.set_value(dst)
 
-        # Подставляем текст без повторного триггера debounce.
+        # Set text without re-triggering the debounce.
         self._source_view.blockSignals(True)
         self._source_view.setPlainText(source_text)
         self._source_view.blockSignals(False)
@@ -214,12 +215,13 @@ class EditorWindow(QWidget):
         self._show_and_focus()
 
         if source_text.strip():
-            # Если есть текст — запускаем перевод сразу. Если уже есть перевод,
-            # он останется видимым, новый пойдёт через soft-replace стриминг.
+            # If there is text — translate immediately. If a translation is
+            # already shown, it stays visible while the new one streams in
+            # via soft-replace.
             self._emit_translate_now()
 
     def show_empty(self, src: str, dst: str) -> None:
-        """Показать пустое окно."""
+        """Show the editor with empty fields."""
         self._preferred_src = src
         self._preferred_dst = dst
         self._src_combo.set_value(src)
@@ -247,7 +249,7 @@ class EditorWindow(QWidget):
     def current_dst(self) -> str:
         return self._dst_combo.value()
 
-    # --- streaming callbacks (вызывает SynapseApp) ------------------------
+    # --- streaming callbacks (called by SynapseApp) -----------------------
 
     def begin_translation(self) -> None:
         self._streaming = True
@@ -257,7 +259,8 @@ class EditorWindow(QWidget):
         self._status.setText(t("editor.translating"))
 
     def begin_soft_replace(self) -> None:
-        """Старт перевода, но старый текст перевода остаётся до первого чанка."""
+        """Start a translation but keep the previous output visible until
+        the first chunk arrives."""
         self._streaming = True
         self._current_translation = ""
         self._copy_btn.setEnabled(False)
@@ -305,8 +308,8 @@ class EditorWindow(QWidget):
         if new_src == self._preferred_src:
             return
         self._preferred_src = new_src
-        # Если src совпал с dst — инвертируем dst на разумный дефолт,
-        # чтобы не переводить на тот же язык.
+        # If src matches dst — flip dst to a reasonable default so we
+        # do not translate into the same language.
         if new_src == self._preferred_dst:
             self._preferred_dst = "ru" if new_src == "en" else "en"
             self._dst_combo.set_value(self._preferred_dst)
@@ -323,8 +326,8 @@ class EditorWindow(QWidget):
         self._emit_translate_now()
 
     def _on_swap(self) -> None:
-        # Классический Google-Translate swap: меняем языки и переносим текущий
-        # перевод в поле оригинала.
+        # Classic Google-Translate swap: switch the languages and move the
+        # current translation into the source field.
         new_src = self._preferred_dst
         new_dst = self._preferred_src
         self._preferred_src = new_src
@@ -365,8 +368,8 @@ class EditorWindow(QWidget):
     # --- lifecycle ----------------------------------------------------------
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        # Не уничтожаем окно — прячем и оповещаем, чтобы app мог сохранить
-        # геометрию.
+        # Do not destroy the window — hide it and notify so the app can
+        # persist the geometry.
         self._debounce.stop()
         self.closed.emit()
         event.accept()

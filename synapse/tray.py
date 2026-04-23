@@ -51,7 +51,7 @@ _app_icon_cache: QIcon | None = None
 
 
 def app_icon() -> QIcon:
-    """Иконка приложения из assets/icon.ico с fallback на нарисованную."""
+    """Application icon from assets/icon.ico with a drawn fallback."""
     global _app_icon_cache
     if _app_icon_cache is not None and not _app_icon_cache.isNull():
         return _app_icon_cache
@@ -87,7 +87,7 @@ def make_tray_icon() -> QIcon:
 
 
 def _mask_key(key: str) -> str:
-    """Показать начало и хвост ключа, середину скрыть."""
+    """Show the start and tail of the key, hide the middle."""
     if not key:
         return ""
     if len(key) <= 12:
@@ -119,7 +119,7 @@ class _ProviderTab(QWidget):
         info.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(info)
 
-        # Строка статуса: сохранён ли ключ, его маска.
+        # Status line: whether a key is saved, with its mask.
         self.status_label = QLabel()
         self.status_label.setTextFormat(Qt.TextFormat.RichText)
         self.status_label.setWordWrap(True)
@@ -271,7 +271,7 @@ class SettingsDialog(QDialog):
         page = QWidget()
         page_layout = QVBoxLayout(page)
 
-        # Язык интерфейса — сверху, чтобы был заметнее.
+        # UI language at the top for visibility.
         ui_title = QLabel(t("settings.ui_lang_title"))
         page_layout.addWidget(ui_title)
 
@@ -371,7 +371,7 @@ class SettingsDialog(QDialog):
     def _on_prompt_changed(self) -> None:
         text = self._prompt_edit.toPlainText()
         if len(text) > CUSTOM_PROMPT_MAX_LEN:
-            # Жёсткая обрезка с сохранением позиции курсора в пределах лимита.
+            # Hard truncation that keeps the cursor position within the limit.
             cursor = self._prompt_edit.textCursor()
             pos = cursor.position()
             self._prompt_edit.blockSignals(True)
@@ -481,7 +481,7 @@ class TrayController:
         self.tray.show()
 
     def apply_ui_language(self) -> None:
-        """Обновить надписи меню трея после смены языка интерфейса."""
+        """Refresh the tray menu labels after a UI language change."""
         self._pause_action.setText(t("tray.resume") if self._paused else t("tray.pause"))
         self._editor_action.setText(t("tray.editor"))
         self._settings_action.setText(t("tray.settings"))
@@ -506,7 +506,8 @@ class TrayController:
         cfg = self._get_config()
         dlg = SettingsDialog(cfg=cfg)
         if dlg.exec() != QDialog.DialogCode.Accepted:
-            # Ключ мог быть удалён через кнопку внутри диалога — обновим индикатор.
+            # The key may have been deleted via the in-dialog button —
+            # refresh the tooltip indicator.
             self._refresh_tooltip()
             return False
 

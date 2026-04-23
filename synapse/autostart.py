@@ -6,15 +6,15 @@ from pathlib import Path
 try:
     import winreg
 except ImportError:
-    winreg = None  # не Windows — автозапуск недоступен
+    winreg = None  # not Windows — autostart unavailable
 
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _VALUE_NAME = "Synapse"
 
 
 def _pythonw_executable() -> str:
-    """Возвращает pythonw.exe рядом с текущим python.exe, если он есть.
-    pythonw запускает без консольного окна — нужный режим для tray-приложения."""
+    """Return pythonw.exe next to the current python.exe if it exists.
+    pythonw runs without a console window — the right mode for a tray app."""
     exe = Path(sys.executable)
     candidate = exe.with_name("pythonw.exe")
     if candidate.is_file():
@@ -23,16 +23,16 @@ def _pythonw_executable() -> str:
 
 
 def _autostart_command() -> str:
-    """Команда, которую Windows выполнит при входе в систему."""
+    """Command Windows will execute on user logon."""
     if getattr(sys, "frozen", False):
-        # PyInstaller-сборка: sys.executable — это сам Synapse.exe.
+        # PyInstaller build: sys.executable is Synapse.exe itself.
         return f'"{Path(sys.executable).resolve()}"'
     exe = _pythonw_executable()
-    # Рабочий каталог проекта (родитель пакета synapse).
+    # Project root (parent of the synapse package).
     project_dir = Path(__file__).resolve().parent.parent
-    # Кавычки вокруг путей с пробелами; /d нужен для cmd-обёртки.
-    # Используем cmd /c cd /d "<dir>" && "<pythonw>" -m synapse, чтобы
-    # модуль -m находился относительно правильного рабочего каталога.
+    # Quote paths containing spaces; /d is required for the cmd wrapper.
+    # We use cmd /c cd /d "<dir>" && "<pythonw>" -m synapse so that the
+    # -m module resolves relative to the correct working directory.
     return f'cmd /c cd /d "{project_dir}" && "{exe}" -m synapse'
 
 
@@ -96,8 +96,8 @@ def _registered_command() -> str | None:
 
 
 def self_heal() -> None:
-    """Если автозапуск включён, но путь устарел (exe переехал) — перезаписать.
-    Вызывается при старте приложения, чтобы перенос папки чинился автоматически."""
+    """If autostart is enabled but the path is stale (exe was moved), rewrite it.
+    Called on app startup so moving the build folder fixes itself automatically."""
     current = _registered_command()
     if not current:
         return
@@ -107,5 +107,5 @@ def self_heal() -> None:
     try:
         enable()
     except OSError:
-        # Нет прав / реестр недоступен — молча, не ломаем запуск.
+        # No permissions / registry inaccessible — silent, do not break startup.
         pass

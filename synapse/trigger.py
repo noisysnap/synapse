@@ -10,23 +10,23 @@ Callback = Callable[[], None]
 
 
 class DoubleCtrlCTrigger:
-    """Слушатель Ctrl+C+C.
+    """Listener for Ctrl+C+C.
 
-    Срабатывает, когда при непрерывно зажатом Ctrl происходят два нажатия C
-    (C↓ C↑ C↓) и второе C↓ попадает в окно double_c_window_ms после первого.
-    Автоповторы от ОС (C↓ без промежуточного C↑) игнорируются. Любое
-    отпускание Ctrl сбрасывает состояние.
+    Fires when, with Ctrl held down continuously, two C key presses occur
+    (C-down, C-up, C-down) and the second C-down falls within
+    double_c_window_ms of the first. OS autorepeat events (C-down with no
+    intervening C-up) are ignored. Releasing Ctrl resets the state.
 
-    Слушатель не блокирует клавиши — первое Ctrl+C работает как обычно.
+    The listener does not block keys — the first Ctrl+C works as usual.
     """
 
     def __init__(self, on_trigger: Callback, window_ms: int = 400) -> None:
         self._on_trigger = on_trigger
         self._window = window_ms / 1000.0
         self._ctrl_down = False
-        self._c_pressed_once = False  # было хотя бы одно завершённое нажатие C при зажатом Ctrl
+        self._c_pressed_once = False  # at least one completed C press while Ctrl was held
         self._last_c_press_ts = 0.0
-        self._c_is_down = False  # текущее физическое состояние клавиши C (для фильтра автоповтора)
+        self._c_is_down = False  # current physical state of the C key (for autorepeat filtering)
         self._lock = Lock()
         self._listener: keyboard.Listener | None = None
 
@@ -51,7 +51,7 @@ class DoubleCtrlCTrigger:
 
     @staticmethod
     def _is_c(key) -> bool:
-        # При зажатом Ctrl pynput на Windows может отдавать vk=67 и char=None.
+        # With Ctrl held, pynput on Windows may report vk=67 and char=None.
         vk = getattr(key, "vk", None)
         if vk == 67:
             return True
@@ -68,19 +68,19 @@ class DoubleCtrlCTrigger:
                 return
 
             if self._is_c(key):
-                # Автоповтор: C↓ без промежуточного C↑ — игнор.
+                # Autorepeat: C-down without intervening C-up — ignore.
                 if self._c_is_down:
                     return
                 self._c_is_down = True
 
                 if not self._ctrl_down:
-                    # C без Ctrl — состояние двойного клика сбрасываем.
+                    # C without Ctrl — reset the double-press state.
                     self._c_pressed_once = False
                     return
 
                 now = time.monotonic()
                 if self._c_pressed_once and (now - self._last_c_press_ts) <= self._window:
-                    # Двойное C при зажатом Ctrl → триггер.
+                    # Double C while Ctrl is held → trigger.
                     self._c_pressed_once = False
                     self._last_c_press_ts = 0.0
                     fire = True

@@ -1,16 +1,43 @@
 # Synapse
 
-Локальный переводчик для Windows 11 с всплывающим окном по горячей клавише.
-Выделяешь текст в любом приложении, при зажатом `Ctrl` дважды нажимаешь `C` —
-рядом с курсором появляется перевод. Направление (RU ↔ EN) определяется
-автоматически. Перевод — через Claude Haiku 4.5, с поддержкой двух провайдеров
-на выбор: **OpenRouter** или **Anthropic напрямую** (быстрее, меньше хопов).
-Ответ стримится в попап по мере генерации — первое слово появляется почти
-сразу.
+A lightweight Windows 11 translator that lives in the system tray. Select
+text anywhere, press **Ctrl + C + C** (Ctrl held, double-tap C), and a
+translation pops up next to the cursor. Direction is detected
+automatically across 20+ languages. Translations stream in word by word —
+the first token usually appears in well under a second.
 
-## Установка
+Two providers are supported: **OpenRouter** (universal gateway) or
+**Anthropic API** (~100–300 ms faster, no extra hop). The default model
+is Claude Haiku 4.5.
 
-Требуется Python 3.11+.
+![icon](icon.png)
+
+## Features
+
+- Global hotkey: hold `Ctrl`, double-tap `C` — translation appears at the
+  cursor. A single `Ctrl+C` still works as a normal copy.
+- Streaming responses — the popup fills in as the model writes.
+- Auto-detects 21 source languages (Cyrillic split into ru/uk, Latin via
+  diacritics + stop-word scoring, CJK/Arabic/Hindi by script).
+- Standalone editor window (Google-Translate style) with debounced
+  auto-translate, language swap, and Ctrl+Enter for instant translate.
+- API keys stored in **Windows Credential Manager** via the `keyring`
+  package. Keys never touch disk.
+- Custom prompt slot for tone/style hints, with prompt-injection
+  sanitisation.
+- Optional close-on-copy and "paste to source window" behaviours.
+- UI translated into Russian, English, Japanese, Spanish, Portuguese.
+- Optional autostart with self-healing path (move the build folder, the
+  registry entry rewrites itself).
+- Single-file PyInstaller build (`onedir`).
+
+## Requirements
+
+- Windows 10/11 (development is on Windows 11; other platforms are not
+  tested)
+- Python 3.11+
+
+## Install (dev mode)
 
 ```bat
 git clone https://github.com/<you>/synapse.git
@@ -20,63 +47,76 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Получение ключа
+## Get an API key
 
-Поддерживаются два провайдера, переключение — вкладками в «Настройках».
+Two providers are supported. Switch between them in **Settings**.
 
-**OpenRouter** (универсальный шлюз):
-1. Открой https://openrouter.ai/keys
-2. Создай ключ (начинается с `sk-or-v1-…`).
-3. Сохрани через `python -m synapse.setup_key` или в диалоге «Настройки».
+**OpenRouter** (universal gateway):
 
-**Anthropic напрямую** (на 100–300 мс быстрее, т.к. без промежуточного хопа):
-1. Открой https://console.anthropic.com/settings/keys
-2. Создай ключ (начинается с `sk-ant-…`).
-3. В «Настройках» выбери вкладку «Anthropic», вставь ключ и сохрани.
+1. Open https://openrouter.ai/keys
+2. Create a key (starts with `sk-or-v1-…`).
+3. Save it via `python -m synapse.setup_key` or in the **Settings** dialog.
 
-Ключи хранятся в Windows Credential Manager (service `synapse`,
-пользователи `openrouter_api_key` и `anthropic_api_key`) через пакет `keyring`.
-На диск они не пишутся. Активный провайдер задаётся полем `active_provider`
-в `config.json` и синхронизируется с выбранной вкладкой при сохранении.
+**Anthropic direct** (100–300 ms faster, no intermediate hop):
 
-## Запуск
+1. Open https://console.anthropic.com/settings/keys
+2. Create a key (starts with `sk-ant-…`).
+3. In **Settings**, switch to the **Anthropic** tab, paste, save.
+
+Keys are stored in Windows Credential Manager (service `synapse`, users
+`openrouter_api_key` and `anthropic_api_key`) via the `keyring` package.
+The active provider is held in `active_provider` in `config.json` and
+synced with the selected tab on save.
+
+## Run
 
 ```bat
 python -m synapse
 ```
 
-Окон не появляется — в системном трее должна загореться иконка «T».
+No window opens — a "T" tray icon should light up. Right-click for the
+menu, double-click for the editor.
 
-## Как работает триггер
+## How the trigger works
 
-- Зажми и держи `Ctrl`.
-- Быстро нажми `C` два раза подряд (второе нажатие в пределах ~400 мс после
-  первого).
-- Первое `Ctrl+C` копирует выделенный текст как обычно.
-- Второе `C` (пока `Ctrl` всё ещё зажат) открывает попап с переводом.
+- Hold and keep holding `Ctrl`.
+- Quickly tap `C` twice (the second press within ~400 ms of the first).
+- The first `Ctrl+C` copies the selection as usual.
+- The second `C` (with `Ctrl` still held) opens the popup.
 
-Если `Ctrl` отпущен между двумя `C` — это просто два обычных `Ctrl+C`,
-триггер не срабатывает. Удержание `C` (автоповтор) тоже не считается.
+If `Ctrl` is released between the two `C` presses, it's just two normal
+`Ctrl+C` operations — no trigger. Holding `C` (autorepeat) does not
+count.
 
-Попап:
-- закрывается по `Esc` или клику вне окна;
-- при новом триггере заменяет своё содержимое;
-- имеет кнопку «Скопировать», чтобы положить перевод в буфер.
+The popup:
 
-## Трей
+- Closes on `Esc` or click outside.
+- Replaces its content on a new trigger (does not stack windows).
+- Has **Copy** and **Paste** buttons.
+- Lets you change source/destination languages inline (re-translates
+  without flashing the loading state).
 
-- **Пауза / Продолжить** — включает и выключает слушатель клавиатуры.
-- **Настройки…** — модель OpenRouter и API-ключ.
-- **Выход** — завершить приложение.
-- Двойной клик по иконке открывает «Настройки».
+## Tray menu
 
-## Конфиг
+- **Pause / Resume** — turn the keyboard listener on/off.
+- **Editor** — open the standalone translation editor.
+- **Settings…** — provider, model, key, languages, autostart,
+  close-on-copy.
+- **Exit** — quit the application.
+- Double-click the icon to open the editor.
 
-Файл `config.json` лежит рядом с пакетом. Параметры:
+## Configuration
+
+`config.json` lives next to the package (next to `Synapse.exe` in a
+build). Created on first save — defaults are baked into
+`synapse/config.py`. Example:
 
 ```json
 {
-  "active_provider": "openrouter",
+  "active_provider": "anthropic",
+  "custom_prompt": "",
+  "preferred_dst_lang": "en",
+  "ui_lang": "en",
   "openrouter": {
     "model": "anthropic/claude-haiku-4.5",
     "base_url": "https://openrouter.ai/api/v1"
@@ -86,37 +126,47 @@ python -m synapse
   },
   "trigger": { "double_c_window_ms": 400 },
   "popup": {
-    "default_width": 320,
+    "default_width": 480,
+    "default_height": 280,
     "cursor_offset_x": 16,
-    "cursor_offset_y": 16
+    "cursor_offset_y": 16,
+    "close_on_copy": false
+  },
+  "editor": {
+    "width": 900,
+    "height": 520,
+    "debounce_ms": 500
   }
 }
 ```
 
-`active_provider` — `"openrouter"` или `"anthropic"`.
+`active_provider` — `"openrouter"` or `"anthropic"`.
 
-## Отладка
+## Debug logs
 
 ```bat
 set SYNAPSE_DEBUG=1
 python -m synapse
 ```
 
-Логи пишутся только в stderr.
+Logs are written to stderr only.
 
-## Автозапуск
+## Autostart
 
-В «Настройках» → «Система» есть чекбокс «Запускать при входе в Windows».
-Включает запись в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`:
-в dev-режиме туда попадает `pythonw -m synapse`, в сборке — путь к
-`Synapse.exe`. Если папка со сборкой переехала, запись в реестре
-обновится автоматически при первом ручном запуске.
+In **Settings → System** there is a checkbox **Launch on Windows
+startup**. It writes to
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`: in dev mode the
+command is `pythonw -m synapse`; in a build it is the path to
+`Synapse.exe`. If the build folder is moved, the next manual launch
+self-heals the registry entry.
 
-## Сборка в .exe
+## Build a `.exe`
 
-Сборка — PyInstaller, режим `--onedir` (папка с `Synapse.exe` и зависимостями).
+The build uses PyInstaller in `--onedir` mode (a folder containing
+`Synapse.exe` plus dependencies).
 
 PowerShell:
+
 ```powershell
 .venv\Scripts\Activate.ps1
 pip install pyinstaller
@@ -124,36 +174,74 @@ pyinstaller Synapse.spec
 ```
 
 cmd:
+
 ```bat
 .venv\Scripts\activate.bat
 pip install pyinstaller
 pyinstaller Synapse.spec
 ```
 
-Результат — `dist\Synapse\Synapse.exe`. Папку можно переносить куда угодно,
-`config.json` создастся рядом с exe при первом запуске. Ключи по-прежнему
-лежат в Windows Credential Manager — они к exe не привязаны.
+Result: `dist\Synapse\Synapse.exe`. The folder is fully relocatable.
+`config.json` is created next to the exe on first save. Keys stay in
+Windows Credential Manager — they are not bound to the exe.
 
-## Ручной чек-лист приёмки
+## Manual acceptance checklist
 
-Проверки, через которые нужно пройти перед релизом:
+Run through this before tagging a release:
 
-- [ ] `python -m synapse` → иконка в трее, окон нет.
-- [ ] Выделить русский текст в любом приложении → `Ctrl` + `C` + `C` →
-      попап с английским переводом у курсора в пределах ~1 с.
-- [ ] То же с английским текстом → русский перевод.
-- [ ] Одиночное `Ctrl+C` копирует текст как обычно, без попапа и задержек.
-- [ ] `Esc` закрывает попап.
-- [ ] Новый триггер на другом тексте заменяет содержимое (а не открывает
-      второй попап).
-- [ ] «Пауза» в трее отключает триггер; «Продолжить» включает обратно.
-- [ ] «Выход» полностью завершает процесс (иконка исчезает, python-процесс
-      закрывается).
-- [ ] Пустой буфер при триггере → ничего не происходит.
-- [ ] При отсутствии/неверном ключе — понятное сообщение в попапе и
-      предложение ввести ключ в «Настройках».
+- [ ] `python -m synapse` → tray icon appears, no windows.
+- [ ] Select Russian text in any app → `Ctrl + C + C` → English
+      translation appears at the cursor within ~1 s.
+- [ ] Same with English text → Russian translation.
+- [ ] A single `Ctrl+C` copies as usual, no popup, no delay.
+- [ ] `Esc` closes the popup.
+- [ ] A new trigger on different text replaces the popup content (does
+      not open a second window).
+- [ ] **Pause** in the tray disables the trigger; **Resume** brings it
+      back.
+- [ ] **Exit** fully terminates the process (icon disappears, the python
+      process exits).
+- [ ] Empty clipboard on trigger → nothing happens.
+- [ ] Missing/invalid key → clear message in the popup and an offer to
+      enter a key in **Settings**.
 
-## Вне скоупа v1
+## Project layout
 
-Языки, кроме RU↔EN; ручное переопределение направления; история переводов;
-офлайн-режим.
+```
+synapse/
+├── __init__.py
+├── __main__.py            # python -m synapse entry
+├── app.py                 # SynapseApp — wires UI, signals, providers
+├── autostart.py           # HKCU\…\Run integration
+├── config.py              # config.json load/save
+├── editor.py              # standalone editor window
+├── i18n.py                # in-memory translations for the UI
+├── lang.py                # language detection (script + diacritics + stop-words)
+├── lang_picker.py         # language combobox widget
+├── popup.py               # cursor-anchored translation popup
+├── setup_key.py           # CLI: python -m synapse.setup_key
+├── tray.py                # tray icon, menu, settings dialog
+├── trigger.py             # double-Ctrl-C keyboard listener
+├── assets/
+│   └── icon.ico
+└── providers/
+    ├── __init__.py
+    ├── base.py            # system prompt, sanitisation, refusal detection
+    ├── keys.py            # Credential Manager wrappers
+    ├── openrouter.py      # OpenRouter (OpenAI-compatible) translator
+    └── anthropic_direct.py # Anthropic SDK translator
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## Contributing
+
+PRs and issues are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+the basics.
+
+## Out of scope (v1)
+
+Manual direction override; translation history; offline mode; macOS or
+Linux support.
