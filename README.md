@@ -51,13 +51,13 @@ pip install -r requirements.txt
 
 Two providers are supported. Switch between them in **Settings**.
 
-**OpenRouter** (universal gateway):
+**OpenRouter**:
 
 1. Open https://openrouter.ai/keys
 2. Create a key (starts with `sk-or-v1-…`).
 3. Save it via `python -m synapse.setup_key` or in the **Settings** dialog.
 
-**Anthropic direct** (100–300 ms faster, no intermediate hop):
+**Anthropic direct**:
 
 1. Open https://console.anthropic.com/settings/keys
 2. Create a key (starts with `sk-ant-…`).
