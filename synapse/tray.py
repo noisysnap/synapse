@@ -198,6 +198,7 @@ class SettingsDialog(QDialog):
             self._build_system_tab(
                 cfg.get("preferred_dst_lang", "en"),
                 cfg.get("ui_lang", "ru"),
+                bool(cfg.get("popup", {}).get("close_on_copy", False)),
             ),
             t("settings.tab_system"),
         )
@@ -264,7 +265,9 @@ class SettingsDialog(QDialog):
 
         return page
 
-    def _build_system_tab(self, current_code: str, current_ui: str) -> QWidget:
+    def _build_system_tab(
+        self, current_code: str, current_ui: str, close_on_copy: bool
+    ) -> QWidget:
         page = QWidget()
         page_layout = QVBoxLayout(page)
 
@@ -321,6 +324,20 @@ class SettingsDialog(QDialog):
         autostart_hint.setWordWrap(True)
         autostart_hint.setStyleSheet("color: #666;")
         page_layout.addWidget(autostart_hint)
+
+        page_layout.addSpacing(12)
+
+        close_on_copy_title = QLabel(t("settings.close_on_copy_title"))
+        page_layout.addWidget(close_on_copy_title)
+
+        self._close_on_copy_checkbox = QCheckBox(t("settings.close_on_copy_checkbox"))
+        self._close_on_copy_checkbox.setChecked(close_on_copy)
+        page_layout.addWidget(self._close_on_copy_checkbox)
+
+        close_on_copy_hint = QLabel(t("settings.close_on_copy_hint"))
+        close_on_copy_hint.setWordWrap(True)
+        close_on_copy_hint.setStyleSheet("color: #666;")
+        page_layout.addWidget(close_on_copy_hint)
 
         page_layout.addStretch(1)
         return page
@@ -417,6 +434,9 @@ class SettingsDialog(QDialog):
     def autostart_enabled(self) -> bool:
         return self._autostart_checkbox.isChecked()
 
+    def close_on_copy(self) -> bool:
+        return self._close_on_copy_checkbox.isChecked()
+
 
 class TrayController:
     def __init__(
@@ -495,6 +515,7 @@ class TrayController:
             "custom_prompt": dlg.custom_prompt(),
             "preferred_dst_lang": dlg.preferred_dst_lang(),
             "ui_lang": dlg.ui_lang(),
+            "popup": {"close_on_copy": dlg.close_on_copy()},
         }
 
         or_model = dlg.openrouter_model()

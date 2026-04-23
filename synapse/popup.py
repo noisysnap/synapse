@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from pynput import mouse as pynput_mouse
+from pynput import keyboard as pynput_keyboard
 
 from .config import debug_enabled
 from .i18n import t
@@ -43,16 +44,19 @@ class PopupWindow(QWidget):
 
     def __init__(self, default_width: int = 480, default_height: int = 320,
                  cursor_offset_x: int = 16, cursor_offset_y: int = 16,
-                 preferred_dst: str = "en") -> None:
+                 preferred_dst: str = "en",
+                 close_on_copy: bool = False) -> None:
         super().__init__(None)
         self.setWindowIcon(app_icon())
         self._default_width = default_width
         self._default_height = default_height
         self._cursor_off = (cursor_offset_x, cursor_offset_y)
         self._current_translation = ""
+        self._source_hwnd: int | None = None  # HWND окна, которое было активным до показа попапа
         self._user_size: QSize | None = None  # None пока пользователь сам не ресайзил
         self._preferred_dst = preferred_dst
         self._preferred_src = "en"
+        self._close_on_copy = close_on_copy
 
         self.setWindowFlags(
             Qt.WindowType.Tool
@@ -173,7 +177,6 @@ class PopupWindow(QWidget):
         bottom_row = QHBoxLayout()
         bottom_row.setContentsMargins(0, 0, 0, 0)
         bottom_row.setSpacing(6)
-        bottom_row.addStretch(1)
 
         self._edit_btn = QPushButton(t("popup.edit"))
         self._edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -181,11 +184,20 @@ class PopupWindow(QWidget):
         self._edit_btn.clicked.connect(self._on_edit_clicked)
         bottom_row.addWidget(self._edit_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
+        bottom_row.addStretch(1)
+
         self._copy_btn = QPushButton(t("popup.copy"))
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._copy_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._copy_btn.clicked.connect(self._copy_translation)
         bottom_row.addWidget(self._copy_btn, 0, Qt.AlignmentFlag.AlignBottom)
+
+        self._paste_btn = QPushButton(t("popup.paste"))
+        self._paste_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._paste_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._paste_btn.clicked.connect(self._paste_translation)
+        self._paste_btn.setEnabled(False)
+        bottom_row.addWidget(self._paste_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
         self._grip = QSizeGrip(self)
         self._grip.setFixedSize(16, 16)
@@ -226,11 +238,15 @@ class PopupWindow(QWidget):
         self._preferred_dst = code
         self._lang_combo.set_value(code)
 
+    def set_close_on_copy(self, enabled: bool) -> None:
+        self._close_on_copy = bool(enabled)
+
     def apply_ui_language(self) -> None:
         """Обновить статические строки после смены языка интерфейса."""
         self._src_combo.setToolTip(t("popup.src_tooltip"))
         self._lang_combo.setToolTip(t("popup.dst_tooltip"))
         self._copy_btn.setText(t("popup.copy"))
+        self._paste_btn.setText(t("popup.paste"))
         self._edit_btn.setText(t("popup.edit"))
         self._grip.setToolTip(t("popup.resize_tooltip"))
         if not self._streaming and not self._current_translation:
@@ -262,10 +278,14 @@ class PopupWindow(QWidget):
         self._preferred_src = src
         self._preferred_dst = dst
 
+    def _set_actions_enabled(self, enabled: bool) -> None:
+        self._copy_btn.setEnabled(enabled)
+        self._paste_btn.setEnabled(enabled)
+
     def show_loading(self, src: str, dst: str) -> None:
         self.set_direction(src, dst)
         self._current_translation = ""
-        self._copy_btn.setEnabled(False)
+        self._set_actions_enabled(False)
         self._translation_view.setPlainText(t("popup.translating"))
         self._reposition_and_show()
 
@@ -274,21 +294,21 @@ class PopupWindow(QWidget):
         self._current_translation = translation
         self._translation_view.setPlainText(translation)
         self._scroll_to_top()
-        self._copy_btn.setEnabled(bool(translation))
+        self._set_actions_enabled(bool(translation))
 
     def begin_translation(self) -> None:
         """Начать накопление streaming-перевода. Чистит поле, ждёт первый delta."""
         self._streaming = True
         self._current_translation = ""
         self._translation_view.setPlainText("")
-        self._copy_btn.setEnabled(False)
+        self._set_actions_enabled(False)
 
     def begin_soft_replace(self) -> None:
         """Мягкий старт нового перевода: оставляем старый текст видимым,
         чтобы не было мигания. Первый вызов append_translation затрёт его."""
         self._streaming = True
         self._current_translation = ""
-        self._copy_btn.setEnabled(False)
+        self._set_actions_enabled(False)
         self._show_updating(t("popup.updating"))
 
     def append_translation(self, delta: str) -> None:
@@ -303,7 +323,7 @@ class PopupWindow(QWidget):
         if first_chunk:
             self._hide_updating()
             self._scroll_to_top()
-        self._copy_btn.setEnabled(True)
+        self._set_actions_enabled(True)
 
     def _show_updating(self, text: str) -> None:
         self._updating_label.setText(text)
@@ -326,11 +346,22 @@ class PopupWindow(QWidget):
         self._streaming = False
         self._hide_updating()
         self._current_translation = ""
-        self._copy_btn.setEnabled(False)
+        self._set_actions_enabled(False)
         self._translation_view.setPlainText(message)
         self._scroll_to_top()
 
     # --- internals ----------------------------------------------------------
+
+    def remember_source_window(self) -> None:
+        """Запомнить, какое окно было на переднем плане до показа попапа —
+        чтобы потом вернуть ему фокус и отправить туда Ctrl+V."""
+        hwnd = self._capture_foreground_hwnd()
+        # Игнорируем, если foreground — это сам попап (повторный триггер поверх
+        # уже открытого окна). В этом случае прежний _source_hwnd валиден.
+        own = int(self.winId()) if self.isVisible() else 0
+        if hwnd and hwnd != own:
+            self._source_hwnd = hwnd
+        _dbg(f"remember_source_window captured={hwnd} own={own} stored={self._source_hwnd}")
 
     def _reposition_and_show(self) -> None:
         if self._user_size is not None:
@@ -364,8 +395,200 @@ class PopupWindow(QWidget):
             return
         cb = QApplication.clipboard()
         cb.setText(self._current_translation, QClipboard.Mode.Clipboard)
+        if self._close_on_copy:
+            self.hide()
+            QTimer.singleShot(120, self._restore_source_foreground)
+            return
         self._copy_btn.setText(t("popup.copied"))
         QTimer.singleShot(1200, lambda: self._copy_btn.setText(t("popup.copy")))
+
+    def _restore_source_foreground(self) -> None:
+        """Вернуть фокус окну, из которого был взят оригинал (без отправки клавиш)."""
+        target = self._source_hwnd
+        if sys.platform == "win32" and target:
+            restored = self._restore_foreground(target)
+            _dbg(f"close_on_copy restore_foreground hwnd={target} restored={restored}")
+
+    def _paste_translation(self) -> None:
+        """Положить перевод в буфер и отправить Ctrl+V в активное окно,
+        заменяя выделенный оригинал на перевод."""
+        if not self._current_translation:
+            return
+        cb = QApplication.clipboard()
+        cb.setText(self._current_translation, QClipboard.Mode.Clipboard)
+        # Скрываем popup, чтобы фокус гарантированно вернулся в целевое окно.
+        self.hide()
+        # Задержка даёт ОС время увести popup с переднего плана и обработать
+        # очередь Qt. Затем принудительно возвращаем фокус исходному окну
+        # и шлём Ctrl+V.
+        QTimer.singleShot(120, self._do_paste_into_source)
+
+    def _capture_foreground_hwnd(self) -> int | None:
+        if sys.platform != "win32":
+            return None
+        try:
+            import ctypes
+            hwnd = int(ctypes.windll.user32.GetForegroundWindow())
+            return hwnd or None
+        except Exception as e:
+            _dbg(f"GetForegroundWindow failed: {e}")
+            return None
+
+    def _restore_foreground(self, hwnd: int) -> bool:
+        """Вернуть фокус hwnd через AttachThreadInput-трюк.
+        Windows запрещает SetForegroundWindow без явного user input, но
+        присоединение потока владельца текущего foreground снимает запрет."""
+        if sys.platform != "win32" or not hwnd:
+            return False
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+
+            if not user32.IsWindow(hwnd):
+                _dbg(f"restore_foreground: hwnd={hwnd} is no longer valid")
+                return False
+
+            # Если окно свёрнуто — развернём.
+            SW_RESTORE = 9
+            if user32.IsIconic(hwnd):
+                user32.ShowWindow(hwnd, SW_RESTORE)
+
+            fg = user32.GetForegroundWindow()
+            if fg == hwnd:
+                return True
+
+            fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+            target_thread = user32.GetWindowThreadProcessId(hwnd, None)
+            cur_thread = kernel32.GetCurrentThreadId()
+
+            attached_fg = False
+            attached_target = False
+            try:
+                if fg_thread and fg_thread != cur_thread:
+                    attached_fg = bool(user32.AttachThreadInput(cur_thread, fg_thread, True))
+                if target_thread and target_thread != cur_thread and target_thread != fg_thread:
+                    attached_target = bool(user32.AttachThreadInput(cur_thread, target_thread, True))
+                user32.BringWindowToTop(hwnd)
+                ok = bool(user32.SetForegroundWindow(hwnd))
+                return ok
+            finally:
+                if attached_fg:
+                    user32.AttachThreadInput(cur_thread, fg_thread, False)
+                if attached_target:
+                    user32.AttachThreadInput(cur_thread, target_thread, False)
+        except Exception as e:
+            _dbg(f"restore_foreground failed: {e}")
+            return False
+
+    def _do_paste_into_source(self) -> None:
+        target = self._source_hwnd
+        if sys.platform == "win32" and target:
+            restored = self._restore_foreground(target)
+            _dbg(f"restore_foreground hwnd={target} restored={restored}")
+            # Ещё одна короткая пауза — Windows нужно время на смену фокуса
+            # после AttachThreadInput/SetForegroundWindow.
+            QTimer.singleShot(40, self._send_paste_keystroke)
+            return
+        self._send_paste_keystroke()
+
+    def _send_paste_keystroke(self) -> None:
+        """Отправить Ctrl+V через Windows SendInput по виртуальным клавишам.
+        Не зависит от раскладки (в отличие от отправки символа 'v', который
+        при русской раскладке превращается в 'м')."""
+        if sys.platform != "win32":
+            # Fallback для не-Windows — pynput с символом.
+            try:
+                kb = pynput_keyboard.Controller()
+                with kb.pressed(pynput_keyboard.Key.ctrl):
+                    kb.press('v')
+                    kb.release('v')
+            except Exception as e:
+                _dbg(f"paste keystroke failed: {e}")
+            return
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            VK_CONTROL = 0x11
+            VK_V = 0x56
+            KEYEVENTF_KEYUP = 0x0002
+            INPUT_KEYBOARD = 1
+
+            ULONG_PTR = ctypes.c_size_t
+
+            class MOUSEINPUT(ctypes.Structure):
+                _fields_ = (
+                    ("dx", wintypes.LONG),
+                    ("dy", wintypes.LONG),
+                    ("mouseData", wintypes.DWORD),
+                    ("dwFlags", wintypes.DWORD),
+                    ("time", wintypes.DWORD),
+                    ("dwExtraInfo", ULONG_PTR),
+                )
+
+            class KEYBDINPUT(ctypes.Structure):
+                _fields_ = (
+                    ("wVk", wintypes.WORD),
+                    ("wScan", wintypes.WORD),
+                    ("dwFlags", wintypes.DWORD),
+                    ("time", wintypes.DWORD),
+                    ("dwExtraInfo", ULONG_PTR),
+                )
+
+            class HARDWAREINPUT(ctypes.Structure):
+                _fields_ = (
+                    ("uMsg", wintypes.DWORD),
+                    ("wParamL", wintypes.WORD),
+                    ("wParamH", wintypes.WORD),
+                )
+
+            # Union должен включать MOUSEINPUT, чтобы его размер совпал с
+            # реальным WinAPI INPUT (40 байт на x64). Без MOUSEINPUT получится
+            # 32 байта, и SendInput вернёт ERROR_INVALID_PARAMETER (87).
+            class _INPUTunion(ctypes.Union):
+                _fields_ = (
+                    ("mi", MOUSEINPUT),
+                    ("ki", KEYBDINPUT),
+                    ("hi", HARDWAREINPUT),
+                )
+
+            class INPUT(ctypes.Structure):
+                _anonymous_ = ("u",)
+                _fields_ = (
+                    ("type", wintypes.DWORD),
+                    ("u", _INPUTunion),
+                )
+
+            def make(vk: int, up: bool) -> INPUT:
+                flags = KEYEVENTF_KEYUP if up else 0
+                return INPUT(
+                    type=INPUT_KEYBOARD,
+                    u=_INPUTunion(ki=KEYBDINPUT(vk, 0, flags, 0, 0)),
+                )
+
+            seq = (INPUT * 4)(
+                make(VK_CONTROL, False),
+                make(VK_V, False),
+                make(VK_V, True),
+                make(VK_CONTROL, True),
+            )
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            user32.SendInput.argtypes = (wintypes.UINT, ctypes.c_void_p, ctypes.c_int)
+            user32.SendInput.restype = wintypes.UINT
+            kernel32.SetLastError(0)
+            sent = user32.SendInput(4, ctypes.byref(seq), ctypes.sizeof(INPUT))
+            err = kernel32.GetLastError()
+            fg_after = user32.GetForegroundWindow()
+            _dbg(
+                f"SendInput Ctrl+V sent={sent}/4 last_error={err} "
+                f"input_size={ctypes.sizeof(INPUT)} foreground_after={fg_after}"
+            )
+        except Exception as e:
+            _dbg(f"paste SendInput failed: {e}")
 
     def current_translation(self) -> str:
         return self._current_translation

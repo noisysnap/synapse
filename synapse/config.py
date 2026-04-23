@@ -26,6 +26,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "default_height": 280,
         "cursor_offset_x": 16,
         "cursor_offset_y": 16,
+        "close_on_copy": False,
     },
     "editor": {
         "width": 900,

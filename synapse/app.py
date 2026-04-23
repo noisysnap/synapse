@@ -93,6 +93,7 @@ class SynapseApp(QObject):
             cursor_offset_x=int(popup_cfg.get("cursor_offset_x", 16)),
             cursor_offset_y=int(popup_cfg.get("cursor_offset_y", 16)),
             preferred_dst=normalize_lang_code(self._cfg.get("preferred_dst_lang"), "en"),
+            close_on_copy=bool(popup_cfg.get("close_on_copy", False)),
         )
         self._popup.dst_language_changed.connect(self._on_popup_dst_changed)
         self._popup.src_language_changed.connect(self._on_popup_src_changed)
@@ -154,6 +155,10 @@ class SynapseApp(QObject):
             self._cfg["openrouter"].update(cfg_updates["openrouter"])
         if "anthropic" in cfg_updates:
             self._cfg["anthropic"].update(cfg_updates["anthropic"])
+        if "popup" in cfg_updates:
+            self._cfg.setdefault("popup", {}).update(cfg_updates["popup"])
+            if "close_on_copy" in cfg_updates["popup"]:
+                self._popup.set_close_on_copy(bool(cfg_updates["popup"]["close_on_copy"]))
 
         new_ui_lang = normalize_ui_lang(self._cfg.get("ui_lang"))
         if new_ui_lang != prev_ui_lang:
@@ -220,6 +225,9 @@ class SynapseApp(QObject):
             return
         if not text or not text.strip():
             return
+        # Зафиксировать HWND исходного окна ДО показа попапа, чтобы потом
+        # знать, куда возвращать фокус для Paste.
+        self._popup.remember_source_window()
         self._last_source_text = text
         preferred_dst = normalize_lang_code(self._cfg.get("preferred_dst_lang"), "en")
         src, dst = resolve_direction(text, preferred_dst)

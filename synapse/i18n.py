@@ -31,6 +31,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "popup.updating": "Обновляется…",
         "popup.copy": "Скопировать",
         "popup.copied": "Скопировано",
+        "popup.paste": "Вставить",
+        "popup.pasted": "Вставлено",
         "popup.edit": "Редактор",
         "popup.src_tooltip": "Язык оригинала",
         "popup.dst_tooltip": "Язык перевода",
@@ -92,6 +94,13 @@ _STRINGS: dict[str, dict[str, str]] = {
             "Добавляет Synapse в автозагрузку текущего пользователя "
             "(HKCU\\…\\Run). Права администратора не требуются."
         ),
+        "settings.close_on_copy_title": "Поведение окна перевода:",
+        "settings.close_on_copy_checkbox": "Закрывать окно при копировании",
+        "settings.close_on_copy_hint": (
+            "Если включено, маленький попап закрывается после нажатия «Скопировать», "
+            "а фокус возвращается в окно, откуда был взят текст. "
+            "В режиме редактора настройка не действует."
+        ),
         # Ошибки провайдеров
         "err.openai_pkg_missing": "Пакет openai не установлен: {e}",
         "err.anthropic_pkg_missing": "Пакет anthropic не установлен: {e}. Установите: pip install anthropic",
@@ -146,6 +155,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "popup.updating": "Updating…",
         "popup.copy": "Copy",
         "popup.copied": "Copied",
+        "popup.paste": "Paste",
+        "popup.pasted": "Pasted",
         "popup.edit": "Editor",
         "popup.src_tooltip": "Source language",
         "popup.dst_tooltip": "Target language",
@@ -207,6 +218,13 @@ _STRINGS: dict[str, dict[str, str]] = {
             "Adds Synapse to the current user's autostart "
             "(HKCU\\…\\Run). No administrator rights required."
         ),
+        "settings.close_on_copy_title": "Translation window behavior:",
+        "settings.close_on_copy_checkbox": "Close window on copy",
+        "settings.close_on_copy_hint": (
+            "If enabled, the small popup closes after clicking “Copy”, "
+            "and focus returns to the window the text was taken from. "
+            "Has no effect in editor mode."
+        ),
         # Provider errors
         "err.openai_pkg_missing": "openai package is not installed: {e}",
         "err.anthropic_pkg_missing": "anthropic package is not installed: {e}. Install: pip install anthropic",
@@ -261,6 +279,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "popup.updating": "更新中…",
         "popup.copy": "コピー",
         "popup.copied": "コピーしました",
+        "popup.paste": "貼り付け",
+        "popup.pasted": "貼り付けました",
         "popup.edit": "エディタ",
         "popup.src_tooltip": "原文の言語",
         "popup.dst_tooltip": "翻訳先の言語",
@@ -322,6 +342,13 @@ _STRINGS: dict[str, dict[str, str]] = {
             "現在のユーザーの自動起動 (HKCU\\…\\Run) に Synapse を追加します。"
             "管理者権限は不要です。"
         ),
+        "settings.close_on_copy_title": "翻訳ウィンドウの動作:",
+        "settings.close_on_copy_checkbox": "コピー時にウィンドウを閉じる",
+        "settings.close_on_copy_hint": (
+            "有効にすると、「コピー」を押したあと小さなポップアップが閉じ、"
+            "テキストを取得した元のウィンドウにフォーカスが戻ります。"
+            "エディタモードでは適用されません。"
+        ),
         # プロバイダのエラー
         "err.openai_pkg_missing": "openai パッケージがインストールされていません: {e}",
         "err.anthropic_pkg_missing": "anthropic パッケージがインストールされていません: {e}。インストール: pip install anthropic",
@@ -376,6 +403,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "popup.updating": "Actualizando…",
         "popup.copy": "Copiar",
         "popup.copied": "Copiado",
+        "popup.paste": "Pegar",
+        "popup.pasted": "Pegado",
         "popup.edit": "Editor",
         "popup.src_tooltip": "Idioma de origen",
         "popup.dst_tooltip": "Idioma de destino",
@@ -437,6 +466,13 @@ _STRINGS: dict[str, dict[str, str]] = {
             "Añade Synapse al inicio del usuario actual "
             "(HKCU\\…\\Run). No requiere permisos de administrador."
         ),
+        "settings.close_on_copy_title": "Comportamiento de la ventana de traducción:",
+        "settings.close_on_copy_checkbox": "Cerrar la ventana al copiar",
+        "settings.close_on_copy_hint": (
+            "Si está activado, el popup pequeño se cierra tras pulsar «Copiar» "
+            "y el foco vuelve a la ventana de la que se tomó el texto. "
+            "No tiene efecto en el modo editor."
+        ),
         # Errores de los proveedores
         "err.openai_pkg_missing": "El paquete openai no está instalado: {e}",
         "err.anthropic_pkg_missing": "El paquete anthropic no está instalado: {e}. Instálalo: pip install anthropic",
@@ -491,6 +527,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "popup.updating": "Atualizando…",
         "popup.copy": "Copiar",
         "popup.copied": "Copiado",
+        "popup.paste": "Colar",
+        "popup.pasted": "Colado",
         "popup.edit": "Editor",
         "popup.src_tooltip": "Idioma de origem",
         "popup.dst_tooltip": "Idioma de destino",
@@ -551,6 +589,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.autostart_hint": (
             "Adiciona o Synapse à inicialização do usuário atual "
             "(HKCU\\…\\Run). Não requer privilégios de administrador."
+        ),
+        "settings.close_on_copy_title": "Comportamento da janela de tradução:",
+        "settings.close_on_copy_checkbox": "Fechar a janela ao copiar",
+        "settings.close_on_copy_hint": (
+            "Se ativado, o popup pequeno fecha após clicar em «Copiar» "
+            "e o foco volta para a janela de onde o texto foi retirado. "
+            "Não tem efeito no modo editor."
         ),
         # Erros dos provedores
         "err.openai_pkg_missing": "O pacote openai não está instalado: {e}",
