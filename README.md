@@ -6,8 +6,8 @@ translation pops up next to the cursor. Direction is detected
 automatically across 20+ languages. Translations stream in word by word —
 the first token usually appears in well under a second.
 
-Two providers are supported: **OpenRouter** (universal gateway) or
-**Anthropic API** (~100–300 ms faster, no extra hop). The default model
+Two providers are supported: **OpenRouter** or
+**Anthropic API**. The default model
 is Claude Haiku 4.5.
 
 ![icon](icon.png)
